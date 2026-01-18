@@ -1,8 +1,8 @@
 <!doctype html>
-<html lang="en">
+<html lang="ko">
 <head>
   <meta charset="utf-8" />
-  <title>Voice Dog Game</title>
+  <title>Dog Game</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
     body { margin:0; overflow:hidden; background:#cce6ff; }
@@ -17,19 +17,28 @@
       background:rgba(0,0,0,0.65); color:#fff;
       font-family:system-ui; font-size:14px;
       max-width: 90vw;
+      z-index: 9999;
     }
   </style>
 </head>
 <body>
   <h1>🐶 Dog Game</h1>
-  <div id="debug">시작됨: three.js 로딩 중…</div>
+  <div id="debug">시작됨: three.js 스크립트 로딩 대기…</div>
 
-  <script type="module">
-    import * as THREE from 'https://cdn.skypack.dev/three@0.152.2';
-    import { GLTFLoader } from 'https://cdn.skypack.dev/three@0.152.2/examples/jsm/loaders/GLTFLoader.js';
+  <!-- ✅ 모듈(import) 말고, 그냥 script로 로드 (가장 안정적) -->
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.152.2/examples/js/loaders/GLTFLoader.js"></script>
 
+  <script>
     const debug = document.getElementById('debug');
     const setDebug = (msg) => { debug.textContent = msg; };
+
+    if (!window.THREE) {
+      setDebug('❌ THREE 로딩 실패 (CDN 차단/네트워크 문제)');
+      throw new Error('THREE not loaded');
+    }
+
+    setDebug('✅ THREE 로딩됨. 장면 준비 중…');
 
     // Scene
     const scene = new THREE.Scene();
@@ -50,7 +59,7 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     document.body.appendChild(renderer.domElement);
 
-    // Lights (IMPORTANT: before loading model)
+    // Lights
     const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 1.6);
     scene.add(hemi);
 
@@ -58,7 +67,7 @@
     dir.position.set(3, 5, 2);
     scene.add(dir);
 
-    // Optional ground (helps you see scale)
+    // Ground (scale 감 잡기용)
     const groundGeo = new THREE.PlaneGeometry(10, 10);
     const groundMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
     const ground = new THREE.Mesh(groundGeo, groundMat);
@@ -66,39 +75,53 @@
     ground.position.y = 0;
     scene.add(ground);
 
-    // Load dog.glb (MUST be in same folder as index.html)
-    const loader = new GLTFLoader();
-    setDebug('dog.glb 불러오는 중… (파일명/위치 확인: 같은 폴더에 dog.glb)');
+    // Load dog.glb
+    setDebug('dog.glb 불러오는 중… (index.html과 같은 폴더에 dog.glb 있어야 함)');
+    const loader = new THREE.GLTFLoader();
 
     loader.load(
       'dog.glb',
       (gltf) => {
-        setDebug('✅ 강아지 로드 성공! (만약 안 보이면 스케일/카메라 자동 조정 중)');
+        setDebug('✅ 강아지 로드 성공! 화면에 맞추는 중…');
+
         const dog = gltf.scene;
-
-        // Put the model at origin
-        dog.position.set(0, 0, 0);
-
-        // Try safe scale (models vary a lot)
-        dog.scale.set(0.25, 0.25, 0.25);
-
         scene.add(dog);
 
-        // Aim camera at model (roughly)
-        camera.lookAt(new THREE.Vector3(0, 0.8, 0));
+        // 재질/면 보정 (검게 보이거나 뒤집힌 모델 대비)
+        dog.traverse((obj) => {
+          if (obj.isMesh && obj.material) obj.material.side = THREE.DoubleSide;
+        });
 
-        // Extra hint: list animation names (if any)
+        // 자동으로 화면에 들어오게 카메라 맞추기
+        const box = new THREE.Box3().setFromObject(dog);
+        const size = new THREE.Vector3();
+        box.getSize(size);
+        const center = new THREE.Vector3();
+        box.getCenter(center);
+        dog.position.sub(center);
+
+        const maxDim = Math.max(size.x, size.y, size.z);
+        const fov = camera.fov * (Math.PI / 180);
+        let cameraZ = Math.abs(maxDim / (2 * Math.tan(fov / 2)));
+        cameraZ *= 1.8;
+
+        camera.position.set(0, maxDim * 0.6, cameraZ);
+        camera.near = cameraZ / 100;
+        camera.far = cameraZ * 100;
+        camera.updateProjectionMatrix();
+        camera.lookAt(0, maxDim * 0.3, 0);
+
         const animCount = (gltf.animations || []).length;
         if (animCount > 0) {
-          const names = gltf.animations.map(a => a.name).slice(0, 6).join(', ');
-          setDebug(`✅ 강아지 로드 성공! 애니메이션 ${animCount}개 있음: ${names}${animCount>6?'…':''}`);
+          const names = gltf.animations.map(a => a.name).slice(0, 8).join(', ');
+          setDebug(`✅ 강아지 로드 성공! 애니메이션 ${animCount}개: ${names}${animCount>8?'…':''}`);
         } else {
-          setDebug('✅ 강아지 로드 성공! (애니메이션은 없음/또는 모델에 포함되지 않음)');
+          setDebug('✅ 강아지 로드 성공! (애니메이션 없음)');
         }
       },
       undefined,
       (err) => {
-        setDebug('❌ 강아지 로드 실패 😭  (1) 파일명이 dog.glb 맞는지 (2) index.html과 같은 폴더인지 (3) 미리보기를 Safari에서 열었는지 확인!');
+        setDebug('❌ 강아지 로드 실패 😭 (파일명 dog.glb / 저장소 루트에 있는지 확인!)');
       }
     );
 
@@ -109,7 +132,7 @@
       renderer.setSize(window.innerWidth, window.innerHeight);
     });
 
-    // Render loop
+    // Loop
     function animate() {
       requestAnimationFrame(animate);
       renderer.render(scene, camera);
