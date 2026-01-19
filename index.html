@@ -1,78 +1,146 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
     <meta charset="UTF-8">
-    <title>말 잘 듣는 시바견 (디버깅)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>말 잘 듣는 시바견</title>
     <style>
-        body { 
-            margin: 0; 
-            overflow: hidden; 
-            background-color: #87CEEB; 
-            font-family: monospace;
-        }
-        
-        #ui { 
-            position: absolute; 
-            top: 0; 
-            left: 0; 
-            width: 100%; 
-            padding: 20px; 
-            background: rgba(0,0,0,0.8); 
-            color: #0f0;
-            z-index: 1000;
+        * {
+            margin: 0;
+            padding: 0;
             box-sizing: border-box;
-            font-size: 14px;
-            max-height: 300px;
-            overflow-y: auto;
-        }
-        
-        #log { 
-            white-space: pre-wrap; 
-            word-break: break-all;
-            margin-bottom: 10px;
-        }
-        
-        button { 
-            padding: 15px 30px; 
-            font-size: 18px; 
-            cursor: pointer; 
-            border-radius: 30px; 
-            border: none; 
-            background: #FFD700; 
-            font-weight: bold;
-            margin: 5px;
-        }
-        
-        button:disabled {
-            background: #ccc;
         }
 
-        #canvas-container {
-            position: absolute;
-            top: 0;
-            left: 0;
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            overflow: hidden;
+            width: 100vw;
+            height: 100vh;
+        }
+
+        #container {
+            position: relative;
             width: 100%;
             height: 100%;
-            z-index: 1;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px 30px;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            z-index: 100;
+            text-align: center;
+            min-width: 300px;
+        }
+
+        #status {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+
+        .btn-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        #voiceBtn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
+        }
+
+        #voiceBtn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(245, 87, 108, 0.4);
+        }
+
+        #voiceBtn:active {
+            transform: translateY(0);
+        }
+
+        #voiceBtn.listening {
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .action-btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            color: white;
+            padding: 10px 20px;
+            font-size: 14px;
+        }
+
+        .action-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(79, 172, 254, 0.4);
+        }
+
+        #commands {
+            margin-top: 15px;
+            padding-top: 15px;
+            border-top: 2px solid #eee;
+            font-size: 13px;
+            color: #666;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
         }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <div id="log">🔍 초기화 중...\n</div>
-        <button id="start-btn" disabled>🎤 명령하기</button>
-        <button id="test-btn" disabled>🔄 애니메이션 테스트</button>
+    <div id="container">
+        <div id="info">
+            <div id="status">🐕 시바견 로딩 중...</div>
+            <div class="btn-group">
+                <button id="voiceBtn">🎤 음성 명령</button>
+            </div>
+            <div class="btn-group" style="margin-top: 10px;">
+                <button class="action-btn" onclick="playAnimation('Bounce')">튀기</button>
+                <button class="action-btn" onclick="playAnimation('Attack')">공격</button>
+                <button class="action-btn" onclick="playAnimation('Eat')">먹기</button>
+                <button class="action-btn" onclick="playAnimation('Clicked')">클릭</button>
+                <button class="action-btn" onclick="playAnimation('Fear')">두려움</button>
+            </div>
+            <div id="commands">
+                💬 영어로 말하세요: "bounce", "attack", "eat", "click", "fear"
+            </div>
+        </div>
     </div>
-    <div id="canvas-container"></div>
 
     <script type="importmap">
-        { 
-            "imports": { 
-                "three": "https://unpkg.com/three@0.160.0/build/three.module.js", 
-                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" 
-            } 
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
         }
+    }
     </script>
 
     <script type="module">
@@ -80,230 +148,233 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        const logEl = document.getElementById('log');
-        const startBtn = document.getElementById('start-btn');
-        const testBtn = document.getElementById('test-btn');
+        // === 전역 변수 ===
+        let scene, camera, renderer, controls;
+        let dog, mixer, clock;
+        let animations = {};
+        let currentAnimation = null;
 
-        function log(msg) {
-            const time = new Date().toLocaleTimeString();
-            logEl.innerHTML += `[${time}] ${msg}\n`;
-            logEl.scrollTop = logEl.scrollHeight;
-            console.log(msg);
-        }
+        const statusEl = document.getElementById('status');
+        const voiceBtn = document.getElementById('voiceBtn');
 
-        let scene, camera, renderer, mixer, controls, actions = {}, currentAction;
-        let isRecognizing = false;
-        const clock = new THREE.Clock();
-
-        try {
-            log('✓ Three.js 로드 성공');
-            
-            // 장면 만들기
+        // === 초기화 ===
+        function init() {
+            // Scene
             scene = new THREE.Scene();
-            scene.background = new THREE.Color(0x87CEEB);
-            log('✓ Scene 생성 완료');
+            scene.background = new THREE.Color(0x87ceeb);
+            scene.fog = new THREE.Fog(0x87ceeb, 100, 300);
 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 50, 150);
-            log('✓ Camera 설정 완료');
+            // Camera
+            camera = new THREE.PerspectiveCamera(
+                35, 
+                window.innerWidth / window.innerHeight, 
+                1, 
+                500
+            );
+            camera.position.set(1, 2, -3);
+            camera.lookAt(0, 1, 0);
 
+            // Renderer
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-            document.getElementById('canvas-container').appendChild(renderer.domElement);
-            log('✓ Renderer 생성 완료');
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('container').appendChild(renderer.domElement);
 
+            // Controls
             controls = new OrbitControls(camera, renderer.domElement);
-            controls.target.set(0, 20, 0);
+            controls.target.set(0, 1, 0);
             controls.enableDamping = true;
-            controls.update();
-            log('✓ Controls 설정 완료');
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 2;
+            controls.maxDistance = 10;
+            controls.maxPolarAngle = Math.PI / 2;
 
-            // 조명
-            const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
-            scene.add(ambientLight);
-            
-            const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-            dirLight.position.set(5, 10, 7);
-            scene.add(dirLight);
-            log('✓ 조명 추가 완료');
+            // Lights
+            const ambient = new THREE.AmbientLight(0xffffff, 1);
+            scene.add(ambient);
 
-            // 테스트용 바닥 그리드
-            const gridHelper = new THREE.GridHelper(200, 20);
-            scene.add(gridHelper);
-            log('✓ 바닥 그리드 추가');
+            const directional = new THREE.DirectionalLight(0xffffff, 1.5);
+            directional.position.set(3, 10, 5);
+            directional.castShadow = true;
+            scene.add(directional);
 
-            // 테스트용 큐브 (모델 로딩 전에도 뭔가 보이게)
-            const testCube = new THREE.Mesh(
-                new THREE.BoxGeometry(20, 20, 20),
-                new THREE.MeshStandardMaterial({ color: 0xff6b6b })
-            );
-            testCube.position.set(0, 10, 0);
-            scene.add(testCube);
-            log('✓ 테스트 큐브 추가 (이게 안 보이면 렌더링 문제)');
+            // Ground
+            const groundGeo = new THREE.PlaneGeometry(500, 500);
+            const groundMat = new THREE.MeshStandardMaterial({ 
+                color: 0x7ec850,
+                roughness: 0.8
+            });
+            const ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.receiveShadow = true;
+            scene.add(ground);
 
-            // 애니메이션 시작 (모델 없어도 큐브는 보임)
-            function animate() {
-                requestAnimationFrame(animate);
-                const delta = clock.getDelta();
-                if (mixer) mixer.update(delta);
-                controls.update();
-                testCube.rotation.y += 0.01; // 큐브 회전
-                renderer.render(scene, camera);
-            }
+            // Clock
+            clock = new THREE.Clock();
+
+            // Load Model
+            loadDog();
+
+            // Events
+            window.addEventListener('resize', onWindowResize);
+            voiceBtn.addEventListener('click', startVoiceRecognition);
+
+            // Start Animation Loop
             animate();
-            log('✓ 렌더링 루프 시작');
+        }
 
-            // 시바견 로딩
-            log('📦 shiba.glb 로딩 시도...');
+        // === 시바견 로드 ===
+        function loadDog() {
             const loader = new GLTFLoader();
             
             loader.load(
                 'shiba.glb',
                 (gltf) => {
-                    log('✅ GLB 파일 로드 성공!');
+                    dog = gltf.scene;
                     
-                    const model = gltf.scene;
-                    
-                    // 모델 정보 출력
-                    const box = new THREE.Box3().setFromObject(model);
-                    const size = box.getSize(new THREE.Vector3());
-                    log(`📏 모델 크기: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
-                    
-                    // 모델 위치 조정
-                    const center = box.getCenter(new THREE.Vector3());
-                    model.position.sub(center);
-                    model.position.y = 0;
-                    
-                    scene.add(model);
-                    scene.remove(testCube); // 테스트 큐브 제거
-                    log('✓ 모델 장면에 추가');
-
-                    // 애니메이션 체크
-                    if (gltf.animations && gltf.animations.length > 0) {
-                        log(`🎬 발견된 애니메이션 수: ${gltf.animations.length}`);
-                        
-                        mixer = new THREE.AnimationMixer(model);
-                        
-                        gltf.animations.forEach((clip, index) => {
-                            const actionName = clip.name.toLowerCase();
-                            actions[actionName] = mixer.clipAction(clip);
-                            log(`  ${index + 1}. "${clip.name}" (${clip.duration.toFixed(2)}초)`);
-                        });
-
-                        // 첫 번째 애니메이션 자동 재생
-                        const firstAction = Object.values(actions)[0];
-                        if (firstAction) {
-                            currentAction = firstAction;
-                            currentAction.play();
-                            log(`▶️ "${Object.keys(actions)[0]}" 애니메이션 재생 시작`);
+                    // 그림자 설정
+                    dog.traverse((child) => {
+                        if (child.isMesh) {
+                            child.castShadow = true;
                         }
+                    });
 
-                        startBtn.disabled = false;
-                        testBtn.disabled = false;
-                        log('✅ 모든 준비 완료!');
-                    } else {
-                        log('⚠️ 애니메이션이 없습니다');
-                    }
+                    scene.add(dog);
+
+                    // 애니메이션 믹서 생성
+                    mixer = new THREE.AnimationMixer(dog);
+
+                    // 모든 애니메이션 저장
+                    gltf.animations.forEach((clip) => {
+                        animations[clip.name] = mixer.clipAction(clip);
+                        console.log('애니메이션 로드:', clip.name);
+                    });
+
+                    // 기본 애니메이션 (Bounce) 재생
+                    playAnimation('Bounce');
+
+                    statusEl.textContent = '✅ 준비 완료! 명령하세요';
+                    console.log('시바견 로드 완료. 사용 가능한 애니메이션:', Object.keys(animations));
                 },
                 (progress) => {
-                    const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                    log(`⏳ 로딩 중... ${percent}%`);
+                    const percent = Math.round((progress.loaded / progress.total) * 100);
+                    statusEl.textContent = `🐕 로딩 중... ${percent}%`;
                 },
                 (error) => {
-                    log(`❌ 로딩 실패: ${error.message}`);
-                    log('💡 확인사항:');
-                    log('  1. shiba.glb 파일이 index.html과 같은 폴더에 있나요?');
-                    log('  2. 파일명 철자가 정확한가요? (대소문자 구분)');
-                    log('  3. 로컬에서 테스트 중이라면 웹서버가 필요합니다');
+                    console.error('로딩 에러:', error);
+                    statusEl.textContent = '❌ 로딩 실패. 파일을 확인하세요.';
                 }
             );
+        }
 
-            // 테스트 버튼
-            testBtn.onclick = () => {
-                const names = Object.keys(actions);
-                if (names.length === 0) {
-                    log('⚠️ 애니메이션이 없습니다');
-                    return;
-                }
-                
-                const randomName = names[Math.floor(Math.random() * names.length)];
-                changeAction(randomName);
-            };
-
-            // 음성인식
-            startBtn.onclick = () => {
-                if (isRecognizing) return;
-                
-                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-                
-                if (!SpeechRecognition) {
-                    log('❌ 이 브라우저는 음성인식을 지원하지 않습니다');
-                    return;
-                }
-
-                const recognition = new SpeechRecognition();
-                recognition.lang = 'en-US';
-                recognition.continuous = false;
-
-                isRecognizing = true;
-                startBtn.disabled = true;
-                log('🎤 듣는 중...');
-
-                recognition.start();
-
-                recognition.onresult = (event) => {
-                    const transcript = event.results[0][0].transcript.toLowerCase();
-                    log(`👂 들음: "${transcript}"`);
-                    
-                    if (transcript.includes('attack')) changeAction('attack');
-                    else if (transcript.includes('bounce')) changeAction('bounce');
-                    else if (transcript.includes('eat')) changeAction('eat');
-                    else if (transcript.includes('click')) changeAction('clicked');
-                    else if (transcript.includes('fear') || transcript.includes('sit')) changeAction('fear');
-                    else {
-                        log(`❓ 알 수 없는 명령: ${transcript}`);
-                        log(`사용 가능: ${Object.keys(actions).join(', ')}`);
-                    }
-                };
-
-                recognition.onerror = (event) => {
-                    log(`❌ 음성인식 오류: ${event.error}`);
-                    isRecognizing = false;
-                    startBtn.disabled = false;
-                };
-
-                recognition.onend = () => {
-                    isRecognizing = false;
-                    startBtn.disabled = false;
-                };
-            };
-
-            function changeAction(name) {
-                const next = actions[name.toLowerCase()];
-                if (!next) {
-                    log(`❌ "${name}" 애니메이션을 찾을 수 없습니다`);
-                    return;
-                }
-                
-                if (currentAction !== next) {
-                    if (currentAction) currentAction.fadeOut(0.3);
-                    next.reset().fadeIn(0.3).play();
-                    currentAction = next;
-                    log(`▶️ "${name}" 애니메이션 재생`);
-                }
+        // === 애니메이션 재생 ===
+        window.playAnimation = function(name) {
+            if (!animations[name]) {
+                console.warn('애니메이션 없음:', name);
+                statusEl.textContent = `❌ "${name}" 애니메이션이 없습니다`;
+                return;
             }
 
-            window.addEventListener('resize', () => {
-                camera.aspect = window.innerWidth / window.innerHeight;
-                camera.updateProjectionMatrix();
-                renderer.setSize(window.innerWidth, window.innerHeight);
-            });
+            const nextAction = animations[name];
 
-        } catch (error) {
-            log(`💥 치명적 오류: ${error.message}`);
-            log(error.stack);
+            // 부드러운 전환
+            if (currentAnimation && currentAnimation !== nextAction) {
+                currentAnimation.fadeOut(0.5);
+            }
+
+            nextAction.reset().fadeIn(0.5).play();
+            currentAnimation = nextAction;
+
+            statusEl.textContent = `🐕 ${name} 실행 중!`;
+            console.log('애니메이션 재생:', name);
         }
+
+        // === 음성 인식 ===
+        function startVoiceRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+            if (!SpeechRecognition) {
+                alert('이 브라우저는 음성인식을 지원하지 않습니다.\n\nChrome, Safari, Edge를 사용하세요.');
+                return;
+            }
+
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'en-US';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            voiceBtn.classList.add('listening');
+            voiceBtn.textContent = '🎤 듣는 중...';
+            statusEl.textContent = '👂 명령을 말하세요...';
+
+            recognition.start();
+
+            recognition.onresult = (event) => {
+                const transcript = event.results[0][0].transcript.toLowerCase().trim();
+                console.log('인식된 음성:', transcript);
+                statusEl.textContent = `들음: "${transcript}"`;
+
+                // 명령어 매칭
+                if (transcript.includes('bounce')) {
+                    playAnimation('Bounce');
+                } else if (transcript.includes('attack')) {
+                    playAnimation('Attack');
+                } else if (transcript.includes('eat')) {
+                    playAnimation('Eat');
+                } else if (transcript.includes('click')) {
+                    playAnimation('Clicked');
+                } else if (transcript.includes('fear') || transcript.includes('sit')) {
+                    playAnimation('Fear');
+                } else {
+                    statusEl.textContent = `❓ "${transcript}" - 알 수 없는 명령`;
+                }
+            };
+
+            recognition.onerror = (event) => {
+                console.error('음성인식 오류:', event.error);
+                
+                if (event.error === 'not-allowed') {
+                    statusEl.textContent = '❌ 마이크 권한을 허용하세요';
+                } else if (event.error === 'no-speech') {
+                    statusEl.textContent = '⚠️ 음성이 감지되지 않았습니다';
+                } else {
+                    statusEl.textContent = `❌ 오류: ${event.error}`;
+                }
+                
+                voiceBtn.classList.remove('listening');
+                voiceBtn.textContent = '🎤 음성 명령';
+            };
+
+            recognition.onend = () => {
+                voiceBtn.classList.remove('listening');
+                voiceBtn.textContent = '🎤 음성 명령';
+            };
+        }
+
+        // === 애니메이션 루프 ===
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const delta = clock.getDelta();
+            
+            if (mixer) {
+                mixer.update(delta);
+            }
+
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        // === 리사이즈 ===
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // === 시작 ===
+        init();
     </script>
 </body>
 </html>
