@@ -8,15 +8,15 @@
         #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: sans-serif; }
         button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; }
         #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 10px; font-size: 20px; }
-        #debug-console { position: absolute; bottom: 0; left: 0; width: 100%; height: 100px; background: rgba(0,0,0,0.7); color: #00FF00; font-family: monospace; font-size: 11px; overflow-y: auto; pointer-events: none; }
+        #debug-console { position: absolute; bottom: 0; left: 0; width: 100%; height: 120px; background: rgba(0,0,0,0.7); color: #00FF00; font-family: monospace; font-size: 12px; overflow-y: auto; pointer-events: none; }
     </style>
 </head>
 <body>
     <div id="ui">
         <button id="start-btn">🎤 강아지야 (Sit/Bark/Walk)</button>
-        <div id="status">명령을 기다릴게요!</div>
+        <div id="status">준비 완료! 버튼을 누르세요.</div>
     </div>
-    <div id="debug-console"></div>
+    <div id="debug-console">--- 로그 시작 ---<br></div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -53,21 +53,21 @@
             loader.load('dog_puppy.glb', (gltf) => {
                 const model = gltf.scene;
                 scene.add(model);
+                debugLog("강아지 도착!");
 
                 const box = new THREE.Box3().setFromObject(model);
                 const size = box.getSize(new THREE.Vector3());
                 const center = box.getCenter(new THREE.Vector3());
                 model.position.sub(center); 
                 camera.position.set(0, size.y * 1.5, size.z * 3);
-                controls.target.set(0, 0, 0);
                 controls.update();
 
                 mixer = new THREE.AnimationMixer(model);
                 if (gltf.animations.length > 0) {
-                    // 유일한 0번 애니메이션을 실행
+                    // 유일한 0번 애니메이션을 메인으로 설정
                     mainAction = mixer.clipAction(gltf.animations[0]);
                     mainAction.play();
-                    debugLog("애니메이션 테이프 재생 시작!");
+                    debugLog("메인 테이프 재생 중...");
                 }
                 animate();
             });
@@ -79,14 +79,14 @@
             renderer.render(scene, camera);
         }
 
-        // 특정 시간대로 강제 이동하는 함수
-        window.playTime = (startTime) => {
+        // [핵심] 테이프의 시간을 강제로 돌리는 함수
+        window.gotoTime = (seconds, label) => {
             if (mainAction) {
-                mainAction.reset(); // 테이프 처음으로
-                mainAction.time = startTime; // 원하는 시간대로 점프!
+                // 테이프의 현재 시간을 해당 초로 점프시킴
+                mainAction.time = seconds;
                 mainAction.paused = false;
                 mainAction.play();
-                debugLog(startTime + "초 지점으로 이동!");
+                debugLog(`명령: ${label} (${seconds}초 지점으로 점프)`);
             }
         };
 
@@ -101,14 +101,14 @@
 
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
-                document.getElementById('status').innerText = "인식: " + speech;
+                document.getElementById('status').innerText = "인식된 단어: " + speech;
 
-                // 시간대는 대략적인 값이야. 테스트해보면서 맞춰가면 돼!
-                if (speech.includes('sit')) window.playTime(1.0);   // 1초 지점이 앉기라고 가정
-                else if (speech.includes('bark')) window.playTime(2.0); // 2초 지점이 짖기
-                else if (speech.includes('walk')) window.playTime(3.5); // 3.5초 지점이 걷기
-                else if (speech.includes('run')) window.playTime(5.0);  // 5초 지점이 뛰기
-                else window.playTime(0); // 기본 대기
+                // Mark, Bark, Dark 등 비슷하게 들려도 다 Bark로 인정!
+                if (speech.includes('sit')) window.gotoTime(1.0, "SIT");
+                else if (speech.includes('ark') || speech.includes('speak') || speech.includes('mark')) window.gotoTime(2.5, "BARK");
+                else if (speech.includes('walk')) window.gotoTime(4.0, "WALK");
+                else if (speech.includes('run')) window.gotoTime(6.0, "RUN");
+                else window.gotoTime(0, "IDLE");
             };
         }
     </script>
