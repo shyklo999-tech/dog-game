@@ -12,8 +12,8 @@
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지야 불러봐!</button>
-        <div id="status">"Sit", "Bark", "Walk", "Run"</div>
+        <button id="start-btn">🎤 강아지야 (Sit/Bark/Walk/Run)</button>
+        <div id="status">명령을 기다리고 있어요!</div>
     </div>
 
     <script type="importmap">
@@ -43,9 +43,9 @@
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
             const controls = new OrbitControls(camera, renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 2.5));
-            const sunLight = new THREE.DirectionalLight(0xffffff, 1);
-            sunLight.position.set(5, 5, 5);
+            scene.add(new THREE.AmbientLight(0xffffff, 3)); 
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            sunLight.position.set(5, 10, 5);
             scene.add(sunLight);
 
             const loader = new GLTFLoader();
@@ -53,58 +53,54 @@
                 model = gltf.scene;
                 scene.add(model);
 
-                // [필살기] 강아지 크기에 카메라를 강제로 맞춤
+                // [중요] 강아지 크기/위치 강제 보정
                 const box = new THREE.Box3().setFromObject(model);
-                const size = box.getSize(new THREE.Vector3());
                 const center = box.getCenter(new THREE.Vector3());
+                const size = box.getSize(new THREE.Vector3());
                 
-                // 강아지를 0,0,0 위치로 강제 이동
-                model.position.x += (model.position.x - center.x);
-                model.position.y += (model.position.y - center.y);
-                model.position.z += (model.position.z - center.z);
-
-                // 카메라 거리를 강아지 크기에 맞춰 계산 (자동 줌)
+                model.position.sub(center); // 강아지를 정중앙(0,0,0)으로 이동
+                
+                // 카메라를 강아지 바로 앞으로 전진!
                 const maxDim = Math.max(size.x, size.y, size.z);
-                const fov = camera.fov * (Math.PI / 180);
-                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 2.5;
-                camera.position.set(0, size.y, cameraZ); // 강아지 높이에 맞춰 카메라 위치 조정
-                camera.lookAt(0, size.y / 2, 0);
-                
-                controls.target.set(0, size.y / 2, 0);
+                camera.position.set(0, maxDim * 0.5, maxDim * 2.5); 
+                camera.lookAt(0, 0, 0);
+                controls.target.set(0, 0, 0);
                 controls.update();
 
                 mixer = new THREE.AnimationMixer(model);
                 gltf.animations.forEach((clip) => {
                     const action = mixer.clipAction(clip);
                     animations[clip.name.toLowerCase()] = action;
+                    console.log("동작 등록됨:", clip.name);
                 });
 
-                // 기본 동작 실행
+                // 기본 대기 동작
                 if (animations['idle_a']) {
                     currentAction = animations['idle_a'];
-                } else if (gltf.animations.length > 0) {
+                } else {
                     currentAction = mixer.clipAction(gltf.animations[0]);
                 }
-                if(currentAction) currentAction.play();
+                currentAction.play();
 
                 animate();
-            }, undefined, (e) => {
-                document.getElementById('status').innerText = "파일 로드 실패ㅠ 이름을 확인하세요!";
             });
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (mixer) mixer.update(clock.getDelta());
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
             renderer.render(scene, camera);
         }
 
-        function changeAction(name) {
-            const newAction = animations[name];
-            if (!newAction || newAction === currentAction) return;
-            currentAction.fadeOut(0.2);
-            newAction.reset().fadeIn(0.2).play();
-            currentAction = newAction;
+        // 동작 변경 핵심 로직
+        function playNewAction(name) {
+            const nextAction = animations[name];
+            if (!nextAction || currentAction === nextAction) return;
+
+            nextAction.reset().fadeIn(0.2).play(); // 새 동작 시작
+            currentAction.fadeOut(0.2); // 이전 동작 서서히 멈춤
+            currentAction = nextAction;
         }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -112,15 +108,17 @@
             const recognition = new SpeechRecognition();
             recognition.lang = 'en-US';
             document.getElementById('start-btn').onclick = () => recognition.start();
+
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
                 document.getElementById('status').innerText = "인식: " + speech;
-                if (speech.includes('sit')) changeAction('sit');
-                else if (speech.includes('bark')) changeAction('bark');
-                else if (speech.includes('walk')) changeAction('walk');
-                else if (speech.includes('run')) changeAction('run');
-                else if (speech.includes('eat')) changeAction('eat');
-                else changeAction('idle_a');
+
+                if (speech.includes('sit')) playNewAction('sit');
+                else if (speech.includes('bark') || speech.includes('speak')) playNewAction('bark');
+                else if (speech.includes('walk')) playNewAction('walk');
+                else if (speech.includes('run')) playNewAction('run');
+                else if (speech.includes('eat')) playNewAction('eat');
+                else playNewAction('idle_a');
             };
         }
     </script>
