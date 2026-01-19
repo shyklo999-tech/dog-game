@@ -2,15 +2,14 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>말 잘 듣는 시바견</title>
+    <title>말 잘 듣는 시바견 (디버깅)</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body { 
             margin: 0; 
             overflow: hidden; 
             background-color: #87CEEB; 
-            font-family: sans-serif;
-            touch-action: none; /* 아이패드 스크롤 방지 */
+            font-family: monospace;
         }
         
         #ui { 
@@ -19,63 +18,53 @@
             left: 0; 
             width: 100%; 
             padding: 20px; 
-            background: rgba(0,0,0,0.3); 
-            text-align: center; 
+            background: rgba(0,0,0,0.8); 
+            color: #0f0;
             z-index: 1000;
             box-sizing: border-box;
+            font-size: 14px;
+            max-height: 300px;
+            overflow-y: auto;
         }
         
-        #status { 
-            color: white; 
-            font-size: 18px; 
-            font-weight: bold; 
-            text-shadow: 2px 2px 4px #000; 
-            margin-bottom: 15px;
-            min-height: 25px;
+        #log { 
+            white-space: pre-wrap; 
+            word-break: break-all;
+            margin-bottom: 10px;
         }
         
         button { 
-            padding: 18px 35px; 
-            font-size: 20px; 
+            padding: 15px 30px; 
+            font-size: 18px; 
             cursor: pointer; 
             border-radius: 30px; 
             border: none; 
             background: #FFD700; 
-            font-weight: bold; 
-            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
-            -webkit-appearance: none;
-            transition: all 0.2s;
-        }
-        
-        button:active { 
-            background: #ffcc00; 
-            transform: scale(0.95); 
+            font-weight: bold;
+            margin: 5px;
         }
         
         button:disabled {
             background: #ccc;
-            cursor: not-allowed;
         }
 
-        /* 로딩 표시 */
-        .loading {
+        #canvas-container {
             position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            color: white;
-            font-size: 24px;
-            text-shadow: 2px 2px 4px #000;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
         }
     </style>
 </head>
 <body>
-    <div class="loading" id="loading">시바견 불러오는 중...</div>
-    
-    <div id="ui" style="display: none;">
-        <div id="status">준비 완료! 버튼을 눌러 명령하세요</div>
-        <button id="start-btn">🎤 명령하기</button>
+    <div id="ui">
+        <div id="log">🔍 초기화 중...\n</div>
+        <button id="start-btn" disabled>🎤 명령하기</button>
+        <button id="test-btn" disabled>🔄 애니메이션 테스트</button>
     </div>
+    <div id="canvas-container"></div>
 
     <script type="importmap">
         { 
@@ -91,208 +80,230 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
+        const logEl = document.getElementById('log');
+        const startBtn = document.getElementById('start-btn');
+        const testBtn = document.getElementById('test-btn');
+
+        function log(msg) {
+            const time = new Date().toLocaleTimeString();
+            logEl.innerHTML += `[${time}] ${msg}\n`;
+            logEl.scrollTop = logEl.scrollHeight;
+            console.log(msg);
+        }
+
         let scene, camera, renderer, mixer, controls, actions = {}, currentAction;
         let isRecognizing = false;
         const clock = new THREE.Clock();
-        const statusEl = document.getElementById('status');
-        const btn = document.getElementById('start-btn');
-        const loadingEl = document.getElementById('loading');
 
-        // 상태 업데이트 함수
-        function updateStatus(text) {
-            statusEl.innerText = text;
-            console.log(text);
-        }
-
-        // 1. 장면 만들기
-        scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x87CEEB);
-
-        camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 50, 150);
-
-        renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 성능 최적화
-        document.body.appendChild(renderer.domElement);
-
-        controls = new OrbitControls(camera, renderer.domElement);
-        controls.target.set(0, 20, 0);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.update();
-
-        // 조명 개선
-        const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
-        scene.add(ambientLight);
-        
-        const dirLight = new THREE.DirectionalLight(0xffffff, 2);
-        dirLight.position.set(5, 10, 7);
-        scene.add(dirLight);
-
-        const backLight = new THREE.DirectionalLight(0xffffff, 0.5);
-        backLight.position.set(-5, 5, -5);
-        scene.add(backLight);
-
-        // 2. 시바견 불러오기
-        const loader = new GLTFLoader();
-        loader.load(
-            'shiba.glb',
-            (gltf) => {
-                const model = gltf.scene;
-                
-                // 모델 크기 및 위치 조정
-                const box = new THREE.Box3().setFromObject(model);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3());
-                
-                // 모델을 원점으로 이동
-                model.position.sub(center);
-                
-                // 적절한 크기로 스케일링 (필요시)
-                const maxSize = Math.max(size.x, size.y, size.z);
-                if (maxSize > 0) {
-                    const scale = 50 / maxSize; // 50 유닛 크기로 조정
-                    model.scale.setScalar(scale);
-                }
-                
-                scene.add(model);
-                
-                // 애니메이션 설정
-                if (gltf.animations && gltf.animations.length > 0) {
-                    mixer = new THREE.AnimationMixer(model);
-                    
-                    gltf.animations.forEach((clip) => {
-                        const actionName = clip.name.toLowerCase();
-                        actions[actionName] = mixer.clipAction(clip);
-                        console.log('애니메이션 발견:', actionName);
-                    });
-
-                    // 기본 동작 시작
-                    const defaultAction = actions['bounce'] || actions[Object.keys(actions)[0]];
-                    if (defaultAction) {
-                        currentAction = defaultAction;
-                        currentAction.play();
-                        console.log('기본 애니메이션 재생 중');
-                    }
-                } else {
-                    console.warn('애니메이션이 없습니다');
-                }
-
-                // UI 표시
-                loadingEl.style.display = 'none';
-                document.getElementById('ui').style.display = 'block';
-                updateStatus('준비 완료! 버튼을 눌러 명령하세요');
-                
-                // 애니메이션 시작
-                animate();
-            },
-            (progress) => {
-                const percent = (progress.loaded / progress.total * 100).toFixed(0);
-                loadingEl.innerText = `시바견 불러오는 중... ${percent}%`;
-            },
-            (error) => {
-                console.error('모델 로딩 실패:', error);
-                loadingEl.innerText = '❌ 시바견을 불러올 수 없습니다. shiba.glb 파일을 확인하세요.';
-                loadingEl.style.color = '#ff6b6b';
-            }
-        );
-
-        // 애니메이션 루프
-        function animate() {
-            requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            if (mixer) mixer.update(delta);
-            controls.update();
-            renderer.render(scene, camera);
-        }
-
-        // 동작 바꾸기 함수 (개선)
-        function changeAction(name) {
-            if (!actions) return;
+        try {
+            log('✓ Three.js 로드 성공');
             
-            const next = actions[name.toLowerCase()];
-            if (!next) {
-                updateStatus(`"${name}" 동작을 찾을 수 없습니다`);
-                console.warn('사용 가능한 동작:', Object.keys(actions));
-                return;
-            }
-            
-            if (currentAction && currentAction !== next) {
-                currentAction.fadeOut(0.3);
-                next.reset().fadeIn(0.3).play();
-                currentAction = next;
-                updateStatus(`✓ ${name} 동작 실행!`);
-            }
-        }
+            // 장면 만들기
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            log('✓ Scene 생성 완료');
 
-        // 3. 음성 인식 (아이패드 대응)
-        btn.onclick = () => {
-            if (isRecognizing) return;
-            
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            
-            if (!SpeechRecognition) {
-                updateStatus('❌ 이 브라우저는 음성인식을 지원하지 않습니다');
-                return;
-            }
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 50, 150);
+            log('✓ Camera 설정 완료');
 
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            recognition.continuous = false;
-            recognition.interimResults = false;
-
-            isRecognizing = true;
-            btn.disabled = true;
-            updateStatus('🎤 듣는 중... (말해보세요)');
-
-            recognition.start();
-
-            recognition.onresult = (event) => {
-                const transcript = event.results[0][0].transcript.toLowerCase();
-                updateStatus(`들은 내용: "${transcript}"`);
-                
-                // 명령어 매칭
-                if (transcript.includes('attack')) changeAction('attack');
-                else if (transcript.includes('bounce')) changeAction('bounce');
-                else if (transcript.includes('eat')) changeAction('eat');
-                else if (transcript.includes('click')) changeAction('clicked');
-                else if (transcript.includes('fear') || transcript.includes('sit')) changeAction('fear');
-                else {
-                    updateStatus(`"${transcript}" - 알 수 없는 명령입니다`);
-                }
-            };
-
-            recognition.onerror = (event) => {
-                console.error('음성인식 오류:', event.error);
-                if (event.error === 'no-speech') {
-                    updateStatus('⚠️ 음성이 감지되지 않았습니다');
-                } else if (event.error === 'not-allowed') {
-                    updateStatus('❌ 마이크 권한이 필요합니다');
-                } else {
-                    updateStatus(`❌ 오류 발생: ${event.error}`);
-                }
-                isRecognizing = false;
-                btn.disabled = false;
-            };
-
-            recognition.onend = () => {
-                isRecognizing = false;
-                btn.disabled = false;
-                setTimeout(() => {
-                    if (statusEl.innerText.includes('듣는 중')) {
-                        updateStatus('준비 완료! 다시 명령하세요');
-                    }
-                }, 2000);
-            };
-        };
-
-        // 화면 크기 조절 대응
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-        });
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            document.getElementById('canvas-container').appendChild(renderer.domElement);
+            log('✓ Renderer 생성 완료');
+
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.target.set(0, 20, 0);
+            controls.enableDamping = true;
+            controls.update();
+            log('✓ Controls 설정 완료');
+
+            // 조명
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.5);
+            scene.add(ambientLight);
+            
+            const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+            dirLight.position.set(5, 10, 7);
+            scene.add(dirLight);
+            log('✓ 조명 추가 완료');
+
+            // 테스트용 바닥 그리드
+            const gridHelper = new THREE.GridHelper(200, 20);
+            scene.add(gridHelper);
+            log('✓ 바닥 그리드 추가');
+
+            // 테스트용 큐브 (모델 로딩 전에도 뭔가 보이게)
+            const testCube = new THREE.Mesh(
+                new THREE.BoxGeometry(20, 20, 20),
+                new THREE.MeshStandardMaterial({ color: 0xff6b6b })
+            );
+            testCube.position.set(0, 10, 0);
+            scene.add(testCube);
+            log('✓ 테스트 큐브 추가 (이게 안 보이면 렌더링 문제)');
+
+            // 애니메이션 시작 (모델 없어도 큐브는 보임)
+            function animate() {
+                requestAnimationFrame(animate);
+                const delta = clock.getDelta();
+                if (mixer) mixer.update(delta);
+                controls.update();
+                testCube.rotation.y += 0.01; // 큐브 회전
+                renderer.render(scene, camera);
+            }
+            animate();
+            log('✓ 렌더링 루프 시작');
+
+            // 시바견 로딩
+            log('📦 shiba.glb 로딩 시도...');
+            const loader = new GLTFLoader();
+            
+            loader.load(
+                'shiba.glb',
+                (gltf) => {
+                    log('✅ GLB 파일 로드 성공!');
+                    
+                    const model = gltf.scene;
+                    
+                    // 모델 정보 출력
+                    const box = new THREE.Box3().setFromObject(model);
+                    const size = box.getSize(new THREE.Vector3());
+                    log(`📏 모델 크기: ${size.x.toFixed(1)} x ${size.y.toFixed(1)} x ${size.z.toFixed(1)}`);
+                    
+                    // 모델 위치 조정
+                    const center = box.getCenter(new THREE.Vector3());
+                    model.position.sub(center);
+                    model.position.y = 0;
+                    
+                    scene.add(model);
+                    scene.remove(testCube); // 테스트 큐브 제거
+                    log('✓ 모델 장면에 추가');
+
+                    // 애니메이션 체크
+                    if (gltf.animations && gltf.animations.length > 0) {
+                        log(`🎬 발견된 애니메이션 수: ${gltf.animations.length}`);
+                        
+                        mixer = new THREE.AnimationMixer(model);
+                        
+                        gltf.animations.forEach((clip, index) => {
+                            const actionName = clip.name.toLowerCase();
+                            actions[actionName] = mixer.clipAction(clip);
+                            log(`  ${index + 1}. "${clip.name}" (${clip.duration.toFixed(2)}초)`);
+                        });
+
+                        // 첫 번째 애니메이션 자동 재생
+                        const firstAction = Object.values(actions)[0];
+                        if (firstAction) {
+                            currentAction = firstAction;
+                            currentAction.play();
+                            log(`▶️ "${Object.keys(actions)[0]}" 애니메이션 재생 시작`);
+                        }
+
+                        startBtn.disabled = false;
+                        testBtn.disabled = false;
+                        log('✅ 모든 준비 완료!');
+                    } else {
+                        log('⚠️ 애니메이션이 없습니다');
+                    }
+                },
+                (progress) => {
+                    const percent = (progress.loaded / progress.total * 100).toFixed(0);
+                    log(`⏳ 로딩 중... ${percent}%`);
+                },
+                (error) => {
+                    log(`❌ 로딩 실패: ${error.message}`);
+                    log('💡 확인사항:');
+                    log('  1. shiba.glb 파일이 index.html과 같은 폴더에 있나요?');
+                    log('  2. 파일명 철자가 정확한가요? (대소문자 구분)');
+                    log('  3. 로컬에서 테스트 중이라면 웹서버가 필요합니다');
+                }
+            );
+
+            // 테스트 버튼
+            testBtn.onclick = () => {
+                const names = Object.keys(actions);
+                if (names.length === 0) {
+                    log('⚠️ 애니메이션이 없습니다');
+                    return;
+                }
+                
+                const randomName = names[Math.floor(Math.random() * names.length)];
+                changeAction(randomName);
+            };
+
+            // 음성인식
+            startBtn.onclick = () => {
+                if (isRecognizing) return;
+                
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                
+                if (!SpeechRecognition) {
+                    log('❌ 이 브라우저는 음성인식을 지원하지 않습니다');
+                    return;
+                }
+
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'en-US';
+                recognition.continuous = false;
+
+                isRecognizing = true;
+                startBtn.disabled = true;
+                log('🎤 듣는 중...');
+
+                recognition.start();
+
+                recognition.onresult = (event) => {
+                    const transcript = event.results[0][0].transcript.toLowerCase();
+                    log(`👂 들음: "${transcript}"`);
+                    
+                    if (transcript.includes('attack')) changeAction('attack');
+                    else if (transcript.includes('bounce')) changeAction('bounce');
+                    else if (transcript.includes('eat')) changeAction('eat');
+                    else if (transcript.includes('click')) changeAction('clicked');
+                    else if (transcript.includes('fear') || transcript.includes('sit')) changeAction('fear');
+                    else {
+                        log(`❓ 알 수 없는 명령: ${transcript}`);
+                        log(`사용 가능: ${Object.keys(actions).join(', ')}`);
+                    }
+                };
+
+                recognition.onerror = (event) => {
+                    log(`❌ 음성인식 오류: ${event.error}`);
+                    isRecognizing = false;
+                    startBtn.disabled = false;
+                };
+
+                recognition.onend = () => {
+                    isRecognizing = false;
+                    startBtn.disabled = false;
+                };
+            };
+
+            function changeAction(name) {
+                const next = actions[name.toLowerCase()];
+                if (!next) {
+                    log(`❌ "${name}" 애니메이션을 찾을 수 없습니다`);
+                    return;
+                }
+                
+                if (currentAction !== next) {
+                    if (currentAction) currentAction.fadeOut(0.3);
+                    next.reset().fadeIn(0.3).play();
+                    currentAction = next;
+                    log(`▶️ "${name}" 애니메이션 재생`);
+                }
+            }
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+        } catch (error) {
+            log(`💥 치명적 오류: ${error.message}`);
+            log(error.stack);
+        }
     </script>
 </body>
 </html>
