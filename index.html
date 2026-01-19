@@ -12,8 +12,8 @@
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지야 (Sit/Bark/Walk/Run)</button>
-        <div id="status">명령을 기다리고 있어요!</div>
+        <button id="start-btn">🎤 강아지야 (Sit/Bark/Walk/Run/Eat)</button>
+        <div id="status">준비 완료! 버튼을 누르고 말씀하세요.</div>
     </div>
 
     <script type="importmap">
@@ -26,7 +26,7 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         let scene, camera, renderer, mixer, model, animations = {};
-        let currentAction;
+        let activeAction;
         const clock = new THREE.Clock();
 
         init();
@@ -43,7 +43,7 @@
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
             const controls = new OrbitControls(camera, renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 3)); 
+            scene.add(new THREE.AmbientLight(0xffffff, 3));
             const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
             sunLight.position.set(5, 10, 5);
             scene.add(sunLight);
@@ -53,34 +53,32 @@
                 model = gltf.scene;
                 scene.add(model);
 
-                // [중요] 강아지 크기/위치 강제 보정
                 const box = new THREE.Box3().setFromObject(model);
                 const center = box.getCenter(new THREE.Vector3());
                 const size = box.getSize(new THREE.Vector3());
+                model.position.sub(center); 
                 
-                model.position.sub(center); // 강아지를 정중앙(0,0,0)으로 이동
-                
-                // 카메라를 강아지 바로 앞으로 전진!
                 const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(0, maxDim * 0.5, maxDim * 2.5); 
+                camera.position.set(0, maxDim * 0.8, maxDim * 2.5); 
                 camera.lookAt(0, 0, 0);
                 controls.target.set(0, 0, 0);
                 controls.update();
 
                 mixer = new THREE.AnimationMixer(model);
+                
+                // [수정] 파일 안의 모든 애니메이션을 찾아 출력하고 저장
                 gltf.animations.forEach((clip) => {
                     const action = mixer.clipAction(clip);
+                    // 어떤 이름으로 들어있든 소문자로 포함관계를 찾을 수 있게 저장
                     animations[clip.name.toLowerCase()] = action;
-                    console.log("동작 등록됨:", clip.name);
+                    console.log("등록된 실제 이름:", clip.name);
                 });
 
-                // 기본 대기 동작
-                if (animations['idle_a']) {
-                    currentAction = animations['idle_a'];
-                } else {
-                    currentAction = mixer.clipAction(gltf.animations[0]);
+                // 처음에는 아무거나 첫 번째 동작 실행
+                if (gltf.animations.length > 0) {
+                    activeAction = mixer.clipAction(gltf.animations[0]);
+                    activeAction.play();
                 }
-                currentAction.play();
 
                 animate();
             });
@@ -93,32 +91,47 @@
             renderer.render(scene, camera);
         }
 
-        // 동작 변경 핵심 로직
-        function playNewAction(name) {
-            const nextAction = animations[name];
-            if (!nextAction || currentAction === nextAction) return;
+        // 동작을 아주 강제로 바꾸는 함수
+        function playAction(command) {
+            let foundName = "";
+            // 저장된 애니메이션 키값 중 명령어가 포함된 걸 찾음
+            for (let name in animations) {
+                if (name.includes(command)) {
+                    foundName = name;
+                    break;
+                }
+            }
 
-            nextAction.reset().fadeIn(0.2).play(); // 새 동작 시작
-            currentAction.fadeOut(0.2); // 이전 동작 서서히 멈춤
-            currentAction = nextAction;
+            if (foundName && animations[foundName]) {
+                const nextAction = animations[foundName];
+                mixer.stopAllAction(); // 일단 다 멈춰!
+                nextAction.reset().setEffectiveWeight(1).play();
+                activeAction = nextAction;
+                document.getElementById('status').innerText = "동작 실행: " + foundName;
+            } else {
+                document.getElementById('status').innerText = "'" + command + "' 동작을 못 찾았어요.";
+            }
         }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
             recognition.lang = 'en-US';
-            document.getElementById('start-btn').onclick = () => recognition.start();
+            document.getElementById('start-btn').onclick = () => {
+                recognition.start();
+                document.getElementById('status').innerText = "듣고 있어요...";
+            }
 
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
                 document.getElementById('status').innerText = "인식: " + speech;
 
-                if (speech.includes('sit')) playNewAction('sit');
-                else if (speech.includes('bark') || speech.includes('speak')) playNewAction('bark');
-                else if (speech.includes('walk')) playNewAction('walk');
-                else if (speech.includes('run')) playNewAction('run');
-                else if (speech.includes('eat')) playNewAction('eat');
-                else playNewAction('idle_a');
+                if (speech.includes('sit')) playAction('sit');
+                else if (speech.includes('bark') || speech.includes('speak')) playAction('bark');
+                else if (speech.includes('walk')) playAction('walk');
+                else if (speech.includes('run')) playAction('run');
+                else if (speech.includes('eat')) playAction('eat');
+                else if (speech.includes('idle')) playAction('idle');
             };
         }
     </script>
