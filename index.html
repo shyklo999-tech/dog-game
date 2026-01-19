@@ -2,24 +2,36 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>시바견 깨우기</title>
+    <title>말 잘 듣는 시바견</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
-        body { margin: 0; overflow: hidden; background-color: #87CEEB; }
-        #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: sans-serif; pointer-events: none; }
-        #start-btn { 
-            position: absolute; bottom: 50px; left: 50%; transform: translateX(-50%);
-            padding: 20px 40px; font-size: 20px; cursor: pointer; border-radius: 50px; 
-            border: none; background: #FFD700; font-weight: bold; pointer-events: auto;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        /* 화면 전체 설정 */
+        body { margin: 0; overflow: hidden; background-color: #87CEEB; font-family: sans-serif; }
+        
+        /* UI 레이아웃 - 아이패드에서도 안 가려지게 상단에 배치 */
+        #ui { 
+            position: absolute; top: 0; left: 0; width: 100%; 
+            padding: 20px 0; background: rgba(0,0,0,0.1); 
+            text-align: center; z-index: 1000; 
         }
-        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); font-size: 18px; margin-bottom: 10px; }
+        
+        #status { color: white; font-size: 18px; font-weight: bold; text-shadow: 1px 1px 2px #000; margin-bottom: 10px; }
+        
+        /* 버튼 디자인 */
+        button { 
+            padding: 15px 30px; font-size: 18px; cursor: pointer; 
+            border-radius: 30px; border: none; background: #FFD700; 
+            font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+            -webkit-appearance: none; /* 아이패드 기본 스타일 제거 */
+        }
+        
+        button:active { background: #ffcc00; transform: scale(0.98); }
     </style>
 </head>
 <body>
     <div id="ui">
-        <div id="status">화면을 터치하면 강아지가 움직여요!</div>
-        <button id="start-btn">🎤 말하기 (Attack, Eat 등)</button>
+        <div id="status">시바견 로딩 중...</div>
+        <button id="start-btn">🎤 클릭하고 명령하기</button>
     </div>
 
     <script type="importmap">
@@ -31,12 +43,13 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        let scene, camera, renderer, mixer, actions = {}, currentAction;
+        let scene, camera, renderer, mixer, controls, actions = {}, currentAction;
         const clock = new THREE.Clock();
 
-        // 1. 기본 셋팅
+        // 1. 장면 만들기
         scene = new THREE.Scene();
         scene.background = new THREE.Color(0x87CEEB);
+
         camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
         camera.position.set(0, 50, 150);
 
@@ -45,31 +58,36 @@
         renderer.setPixelRatio(window.devicePixelRatio);
         document.body.appendChild(renderer.domElement);
 
-        const controls = new OrbitControls(camera, renderer.domElement);
-        controls.target.set(0, 30, 0);
+        controls = new OrbitControls(camera, renderer.domElement);
+        controls.target.set(0, 20, 0);
+        controls.update();
 
-        scene.add(new THREE.AmbientLight(0xffffff, 3));
-        const light = new THREE.DirectionalLight(0xffffff, 2);
-        light.position.set(5, 10, 5);
-        scene.add(light);
+        // 조명
+        scene.add(new THREE.AmbientLight(0xffffff, 2.5));
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.5);
+        dirLight.position.set(5, 10, 5);
+        scene.add(dirLight);
 
-        // 2. 모델 로드
+        // 2. 시바견 불러오기
         const loader = new GLTFLoader();
         loader.load('shiba.glb', (gltf) => {
             const model = gltf.scene;
             scene.add(model);
             
             mixer = new THREE.AnimationMixer(model);
+            
+            // 파일 내 실제 애니메이션 등록
             gltf.animations.forEach((clip) => {
                 actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
             });
 
-            // 우선 첫 번째 애니메이션(Bounce 예상) 재생 시도
+            // 기본 동작(Bounce) 시작
             if (actions['bounce']) {
                 currentAction = actions['bounce'];
                 currentAction.play();
             }
-            
+
+            document.getElementById('status').innerText = "시바견 도착! 명령해보세요.";
             animate();
         });
 
@@ -80,43 +98,49 @@
             renderer.render(scene, camera);
         }
 
-        // 3. 아이패드 핵심: 화면 어디든 터치하면 믹서 시간을 업데이트해서 강제 재생
-        window.addEventListener('touchstart', () => {
-            if (mixer) {
-                mixer.timeScale = 1;
-                if (currentAction) currentAction.play();
+        // 동작 바꾸기 함수
+        function changeAction(name) {
+            const next = actions[name.toLowerCase()];
+            if (next && currentAction !== next) {
+                currentAction.fadeOut(0.5);
+                next.reset().fadeIn(0.5).play();
+                currentAction = next;
             }
-        }, { once: true });
+        }
 
-        // 4. 음성 인식 부분
-        document.getElementById('start-btn').onclick = () => {
-            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (SpeechRecognition) {
-                const rec = new SpeechRecognition();
+        // 3. 아이패드 대응 & 음성 인식
+        const btn = document.getElementById('start-btn');
+        btn.onclick = () => {
+            // 아이패드에서 멈춘 애니메이션을 깨우는 코드
+            if (mixer) mixer.timeScale = 1;
+            if (currentAction) currentAction.play();
+
+            const Speech = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (Speech) {
+                const rec = new Speech();
                 rec.lang = 'en-US';
                 rec.start();
-                document.getElementById('status').innerText = "듣고 있어요...";
+                document.getElementById('status').innerText = "듣고 있어요... (Attack, Eat, Fear 등)";
 
                 rec.onresult = (e) => {
-                    const word = e.results[0][0].transcript.toLowerCase();
-                    document.getElementById('status').innerText = "인식됨: " + word;
+                    const speech = e.results[0][0].transcript.toLowerCase();
+                    document.getElementById('status').innerText = "명령: " + speech;
                     
-                    // 파일 내 실제 이름 매칭 (Attack, Bounce, Clicked, Eat, Fear)
-                    let target = '';
-                    if (word.includes('attack')) target = 'attack';
-                    else if (word.includes('bounce') || word.includes('jump')) target = 'bounce';
-                    else if (word.includes('click')) target = 'clicked';
-                    else if (word.includes('eat')) target = 'eat';
-                    else if (word.includes('fear') || word.includes('sit')) target = 'fear';
-
-                    if (target && actions[target]) {
-                        currentAction.fadeOut(0.3);
-                        actions[target].reset().fadeIn(0.3).play();
-                        currentAction = actions[target];
-                    }
+                    if (speech.includes('attack')) changeAction('attack');
+                    else if (speech.includes('bounce')) changeAction('bounce');
+                    else if (speech.includes('eat')) changeAction('eat');
+                    else if (speech.includes('click')) changeAction('clicked');
+                    else if (speech.includes('fear') || speech.includes('sit')) changeAction('fear');
                 };
             }
         };
+
+        // 화면 크기 조절 대응
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
