@@ -2,26 +2,18 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>My AI Dog - Final Version</title>
+    <title>My AI Dog - Final</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; }
-        #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: 'Malgun Gothic', sans-serif; }
-        button { 
-            padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; 
-            background: #FFD700; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); 
-            transition: transform 0.2s;
-        }
-        button:active { transform: scale(0.9); }
-        #status { 
-            color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); 
-            margin-top: 15px; font-size: 24px; font-weight: bold; 
-        }
+        #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: sans-serif; }
+        button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 22px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지랑 대화 시작!</button>
-        <div id="status">"Sit", "Eat", "Walk", "Run" 이라고 말해보세요!</div>
+        <button id="start-btn">🎤 강아지야!</button>
+        <div id="status">"Sit", "Eat", "Walk", "Run"</div>
     </div>
 
     <script type="importmap">
@@ -47,15 +39,16 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(0, 2, 8);
+            // 카메라 초기 위치 (대략적으로 설정)
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
+            camera.position.set(0, 2, 5);
 
             const controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
 
-            scene.add(new THREE.AmbientLight(0xffffff, 2));
-            const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
-            sunLight.position.set(10, 10, 10);
+            scene.add(new THREE.AmbientLight(0xffffff, 2.5)); // 조명 더 밝게!
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+            sunLight.position.set(5, 5, 5);
             scene.add(sunLight);
 
             const loader = new GLTFLoader();
@@ -63,16 +56,24 @@
                 model = gltf.scene;
                 scene.add(model);
 
-                // 크기 및 위치 자동 정렬
+                // [핵심] 강아지 크기와 위치에 카메라를 강제로 맞춤!
                 const box = new THREE.Box3().setFromObject(model);
                 const size = box.getSize(new THREE.Vector3());
                 const center = box.getCenter(new THREE.Vector3());
+
+                // 강아지를 세상의 중심(0,0,0)으로 옮김
                 model.position.x += (model.position.x - center.x);
                 model.position.y += (model.position.y - center.y);
                 model.position.z += (model.position.z - center.z);
+
+                // 카메라가 강아지 크기에 맞춰서 거리를 조절함
                 const maxDim = Math.max(size.x, size.y, size.z);
-                const scale = 4 / maxDim;
-                model.scale.set(scale, scale, scale);
+                const fov = camera.fov * (Math.PI / 180);
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
+                cameraZ *= 1.5; // 약간의 여유 공간
+                camera.position.z = cameraZ;
+                camera.updateProjectionMatrix();
+                controls.update();
 
                 mixer = new THREE.AnimationMixer(model);
                 gltf.animations.forEach((clip) => {
@@ -80,63 +81,47 @@
                     animations[name] = mixer.clipAction(clip);
                 });
 
-                // 처음엔 Idle(가만히 있기) 동작 재생
                 if (animations['idle']) animations['idle'].play();
                 else if (gltf.animations.length > 0) mixer.clipAction(gltf.animations[0]).play();
 
                 animate();
+            }, undefined, (e) => {
+                document.getElementById('status').innerText = "파일 로드 실패: dog.glb 이름을 확인하세요!";
             });
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            if (mixer) mixer.update(delta);
+            if (mixer) mixer.update(clock.getDelta());
             renderer.render(scene, camera);
         }
 
-        const SpeechRecognition = window.SpeechRecognition || window.webkitRecognition || window.webkitSpeechRecognition;
+        // --- 음성 인식 부분 ---
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
             recognition.lang = 'en-US';
 
             document.getElementById('start-btn').onclick = () => {
                 recognition.start();
-                document.getElementById('status').innerText = "듣고 있어요... (말해보세요!)";
+                document.getElementById('status').innerText = "듣고 있어요...";
             };
 
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
-                document.getElementById('status').innerText = "인식된 말: " + speech;
+                document.getElementById('status').innerText = "인식: " + speech;
 
                 if (mixer) {
-                    Object.values(animations).forEach(action => action.stop());
+                    Object.values(animations).forEach(a => a.stop());
                     
-                    // 음성 인식 단어 매칭
-                    if (speech.includes('sit')) {
-                        if(animations['sit']) animations['sit'].play();
-                        document.getElementById('status').innerText = "앉았어요! (Sit)";
-                    } 
-                    else if (speech.includes('eat')) {
-                        if(animations['eat']) animations['eat'].play();
-                        document.getElementById('status').innerText = "냠냠 맛있게 먹어요! (Eat)";
-                    } 
-                    else if (speech.includes('walk')) {
-                        if(animations['walk']) animations['walk'].play();
-                        document.getElementById('status').innerText = "산책 중! (Walk)";
-                    } 
-                    else if (speech.includes('run')) {
-                        if(animations['run']) animations['run'].play();
-                        document.getElementById('status').innerText = "뛰는 중! (Run)";
-                    } 
-                    else {
-                        if(animations['idle']) animations['idle'].play();
-                        document.getElementById('status').innerText = "다시 말씀해주세요!";
-                    }
+                    // 새 파일에 있는 동작들 매칭
+                    if (speech.includes('sit')) animations['sit']?.play();
+                    else if (speech.includes('eat')) animations['eat']?.play();
+                    else if (speech.includes('walk')) animations['walk']?.play();
+                    else if (speech.includes('run')) animations['run']?.play();
+                    else animations['idle']?.play();
                 }
             };
-        } else {
-            document.getElementById('status').innerText = "이 브라우저는 음성인식을 지원하지 않아요.";
         }
     </script>
 </body>
