@@ -12,7 +12,7 @@
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지야!</button>
+        <button id="start-btn">🎤 강아지랑 대화하기</button>
         <div id="status">"Sit", "Eat", "Walk", "Run"</div>
     </div>
 
@@ -39,14 +39,13 @@
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
-            // 카메라 초기 위치 (대략적으로 설정)
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
             camera.position.set(0, 2, 5);
 
             const controls = new OrbitControls(camera, renderer.domElement);
             controls.enableDamping = true;
 
-            scene.add(new THREE.AmbientLight(0xffffff, 2.5)); // 조명 더 밝게!
+            scene.add(new THREE.AmbientLight(0xffffff, 2.5));
             const sunLight = new THREE.DirectionalLight(0xffffff, 1);
             sunLight.position.set(5, 5, 5);
             scene.add(sunLight);
@@ -56,43 +55,44 @@
                 model = gltf.scene;
                 scene.add(model);
 
-                // [핵심] 강아지 크기와 위치에 카메라를 강제로 맞춤!
+                // 자동 줌 및 중앙 정렬
                 const box = new THREE.Box3().setFromObject(model);
                 const size = box.getSize(new THREE.Vector3());
                 const center = box.getCenter(new THREE.Vector3());
-
-                // 강아지를 세상의 중심(0,0,0)으로 옮김
                 model.position.x += (model.position.x - center.x);
                 model.position.y += (model.position.y - center.y);
                 model.position.z += (model.position.z - center.z);
 
-                // 카메라가 강아지 크기에 맞춰서 거리를 조절함
                 const maxDim = Math.max(size.x, size.y, size.z);
                 const fov = camera.fov * (Math.PI / 180);
-                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2));
-                cameraZ *= 1.5; // 약간의 여유 공간
+                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5;
                 camera.position.z = cameraZ;
                 camera.updateProjectionMatrix();
                 controls.update();
 
+                // 애니메이션 믹서 설정
                 mixer = new THREE.AnimationMixer(model);
+                
+                // 파일 내의 모든 애니메이션을 찾아 저장 (대소문자 무시하도록)
                 gltf.animations.forEach((clip) => {
-                    const name = clip.name.toLowerCase();
-                    animations[name] = mixer.clipAction(clip);
+                    const action = mixer.clipAction(clip);
+                    animations[clip.name.toLowerCase()] = action;
+                    console.log("로드된 동작:", clip.name); 
                 });
 
+                // 기본 동작 실행
                 if (animations['idle']) animations['idle'].play();
                 else if (gltf.animations.length > 0) mixer.clipAction(gltf.animations[0]).play();
 
                 animate();
-            }, undefined, (e) => {
-                document.getElementById('status').innerText = "파일 로드 실패: dog.glb 이름을 확인하세요!";
             });
         }
 
+        // 애니메이션 업데이트 루프 (여기가 중요!)
         function animate() {
             requestAnimationFrame(animate);
-            if (mixer) mixer.update(clock.getDelta());
+            const delta = clock.getDelta(); // 매 프레임의 시간 간격을 계산
+            if (mixer) mixer.update(delta); // 강아지 움직임을 시간에 맞춰 업데이트
             renderer.render(scene, camera);
         }
 
@@ -104,7 +104,7 @@
 
             document.getElementById('start-btn').onclick = () => {
                 recognition.start();
-                document.getElementById('status').innerText = "듣고 있어요...";
+                document.getElementById('status').innerText = "듣고 있어요... (말해보세요!)";
             };
 
             recognition.onresult = (event) => {
@@ -112,14 +112,20 @@
                 document.getElementById('status').innerText = "인식: " + speech;
 
                 if (mixer) {
-                    Object.values(animations).forEach(a => a.stop());
+                    // 1. 모든 애니메이션을 부드럽게 멈춤
+                    Object.values(animations).forEach(a => a.fadeOut(0.5));
                     
-                    // 새 파일에 있는 동작들 매칭
-                    if (speech.includes('sit')) animations['sit']?.play();
-                    else if (speech.includes('eat')) animations['eat']?.play();
-                    else if (speech.includes('walk')) animations['walk']?.play();
-                    else if (speech.includes('run')) animations['run']?.play();
-                    else animations['idle']?.play();
+                    // 2. 해당 애니메이션 실행
+                    let target = 'idle';
+                    if (speech.includes('sit')) target = 'sit';
+                    else if (speech.includes('eat')) target = 'eat';
+                    else if (speech.includes('walk')) target = 'walk';
+                    else if (speech.includes('run')) target = 'run';
+
+                    if (animations[target]) {
+                        animations[target].reset().fadeIn(0.5).play();
+                        document.getElementById('status').innerText = "동작: " + target;
+                    }
                 }
             };
         }
