@@ -2,21 +2,19 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>My Puppy Game - Final</title>
+    <title>My Puppy Game</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; }
         #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: sans-serif; }
         button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; }
-        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 10px; font-size: 20px; }
-        #debug-console { position: absolute; bottom: 0; left: 0; width: 100%; height: 120px; background: rgba(0,0,0,0.7); color: #00FF00; font-family: monospace; font-size: 12px; overflow-y: auto; pointer-events: none; }
+        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 20px; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지야 (Sit/Bark/Walk)</button>
-        <div id="status">준비 완료! 버튼을 누르세요.</div>
+        <button id="start-btn">🎤 강아지야 (Sit / Bark / Walk)</button>
+        <div id="status">강아지를 기다리는 중...</div>
     </div>
-    <div id="debug-console">--- 로그 시작 ---<br></div>
 
     <script type="importmap">
         { "imports": { "three": "https://unpkg.com/three@0.160.0/build/three.module.js", "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/" } }
@@ -27,9 +25,7 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        const debugLog = (msg) => { document.getElementById('debug-console').innerHTML += msg + "<br>"; };
-
-        let scene, camera, renderer, mixer, mainAction;
+        let scene, camera, renderer, mixer, actions = {}, currentAction;
         const clock = new THREE.Clock();
 
         init();
@@ -41,34 +37,37 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
             document.body.appendChild(renderer.domElement);
 
-            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.01, 1000);
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
             const controls = new OrbitControls(camera, renderer.domElement);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 3));
+            scene.add(new THREE.AmbientLight(0xffffff, 2.5));
             const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
             sunLight.position.set(5, 10, 5);
             scene.add(sunLight);
 
             const loader = new GLTFLoader();
-            loader.load('dog_puppy.glb', (gltf) => {
+            // 파일 이름을 다운로드한 시바견 파일 이름으로 바꿔줘!
+            loader.load('shiba.glb', (gltf) => {
                 const model = gltf.scene;
                 scene.add(model);
-                debugLog("강아지 도착!");
+                document.getElementById('status').innerText = "시바견 도착! 명령해보세요.";
 
+                // 자동 줌인
                 const box = new THREE.Box3().setFromObject(model);
                 const size = box.getSize(new THREE.Vector3());
-                const center = box.getCenter(new THREE.Vector3());
-                model.position.sub(center); 
-                camera.position.set(0, size.y * 1.5, size.z * 3);
+                camera.position.set(0, size.y, size.z * 3);
+                controls.target.set(0, size.y * 0.5, 0);
                 controls.update();
 
                 mixer = new THREE.AnimationMixer(model);
-                if (gltf.animations.length > 0) {
-                    // 유일한 0번 애니메이션을 메인으로 설정
-                    mainAction = mixer.clipAction(gltf.animations[0]);
-                    mainAction.play();
-                    debugLog("메인 테이프 재생 중...");
-                }
+                gltf.animations.forEach((clip) => {
+                    actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
+                });
+
+                // 기본 동작 실행
+                const firstAction = Object.values(actions)[0];
+                if (firstAction) { currentAction = firstAction; currentAction.play(); }
+
                 animate();
             });
         }
@@ -79,36 +78,32 @@
             renderer.render(scene, camera);
         }
 
-        // [핵심] 테이프의 시간을 강제로 돌리는 함수
-        window.gotoTime = (seconds, label) => {
-            if (mainAction) {
-                // 테이프의 현재 시간을 해당 초로 점프시킴
-                mainAction.time = seconds;
-                mainAction.paused = false;
-                mainAction.play();
-                debugLog(`명령: ${label} (${seconds}초 지점으로 점프)`);
+        function playCommand(name) {
+            const targetKey = Object.keys(actions).find(k => k.includes(name));
+            if (targetKey && actions[targetKey]) {
+                const nextAction = actions[targetKey];
+                if (currentAction !== nextAction) {
+                    currentAction.fadeOut(0.2);
+                    nextAction.reset().fadeIn(0.2).play();
+                    currentAction = nextAction;
+                }
             }
-        };
+        }
 
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
             recognition.lang = 'en-US';
-            document.getElementById('start-btn').onclick = () => {
-                recognition.start();
-                debugLog("듣는 중...");
-            };
-
+            document.getElementById('start-btn').onclick = () => recognition.start();
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
-                document.getElementById('status').innerText = "인식된 단어: " + speech;
+                document.getElementById('status').innerText = "명령: " + speech;
 
-                // Mark, Bark, Dark 등 비슷하게 들려도 다 Bark로 인정!
-                if (speech.includes('sit')) window.gotoTime(1.0, "SIT");
-                else if (speech.includes('ark') || speech.includes('speak') || speech.includes('mark')) window.gotoTime(2.5, "BARK");
-                else if (speech.includes('walk')) window.gotoTime(4.0, "WALK");
-                else if (speech.includes('run')) window.gotoTime(6.0, "RUN");
-                else window.gotoTime(0, "IDLE");
+                if (speech.includes('sit')) playCommand('sit');
+                else if (speech.includes('bark') || speech.includes('speak')) playCommand('bark');
+                else if (speech.includes('walk')) playCommand('walk');
+                else if (speech.includes('run')) playCommand('run');
+                else playCommand('idle');
             };
         }
     </script>
