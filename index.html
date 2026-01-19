@@ -12,8 +12,8 @@
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지야 (Sit/Bark/Walk/Run/Eat)</button>
-        <div id="status">준비 완료! 버튼을 누르고 말씀하세요.</div>
+        <button id="start-btn">🎤 강아지야 (Sit/Bark/Walk/Run)</button>
+        <div id="status">명령을 기다리고 있어요!</div>
     </div>
 
     <script type="importmap">
@@ -25,8 +25,8 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        let scene, camera, renderer, mixer, model, animations = {};
-        let activeAction;
+        let scene, camera, renderer, mixer, model, clips, actions = {};
+        let currentAction;
         const clock = new THREE.Clock();
 
         init();
@@ -52,6 +52,7 @@
             loader.load('dog_puppy.glb', (gltf) => {
                 model = gltf.scene;
                 scene.add(model);
+                clips = gltf.animations; // 애니메이션 클립들 저장
 
                 const box = new THREE.Box3().setFromObject(model);
                 const center = box.getCenter(new THREE.Vector3());
@@ -59,26 +60,25 @@
                 model.position.sub(center); 
                 
                 const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(0, maxDim * 0.8, maxDim * 2.5); 
+                camera.position.set(0, maxDim * 1, maxDim * 2.5); 
                 camera.lookAt(0, 0, 0);
-                controls.target.set(0, 0, 0);
                 controls.update();
 
                 mixer = new THREE.AnimationMixer(model);
                 
-                // [수정] 파일 안의 모든 애니메이션을 찾아 출력하고 저장
-                gltf.animations.forEach((clip) => {
+                // 애니메이션 클립들을 액션으로 변환하여 저장
+                clips.forEach((clip) => {
                     const action = mixer.clipAction(clip);
-                    // 어떤 이름으로 들어있든 소문자로 포함관계를 찾을 수 있게 저장
-                    animations[clip.name.toLowerCase()] = action;
-                    console.log("등록된 실제 이름:", clip.name);
+                    actions[clip.name.toLowerCase()] = action;
                 });
 
-                // 처음에는 아무거나 첫 번째 동작 실행
-                if (gltf.animations.length > 0) {
-                    activeAction = mixer.clipAction(gltf.animations[0]);
-                    activeAction.play();
+                // 기본 동작 실행
+                if (actions['idle_a']) {
+                    currentAction = actions['idle_a'];
+                } else {
+                    currentAction = mixer.clipAction(clips[0]);
                 }
+                currentAction.play();
 
                 animate();
             });
@@ -91,25 +91,22 @@
             renderer.render(scene, camera);
         }
 
-        // 동작을 아주 강제로 바꾸는 함수
-        function playAction(command) {
-            let foundName = "";
-            // 저장된 애니메이션 키값 중 명령어가 포함된 걸 찾음
-            for (let name in animations) {
-                if (name.includes(command)) {
-                    foundName = name;
-                    break;
-                }
-            }
-
-            if (foundName && animations[foundName]) {
-                const nextAction = animations[foundName];
-                mixer.stopAllAction(); // 일단 다 멈춰!
+        // 동작을 완전히 새로 고침하며 바꾸는 함수
+        function forceAction(cmd) {
+            // 입력된 명령어(cmd)가 포함된 애니메이션 이름 찾기
+            const targetName = Object.keys(actions).find(name => name.includes(cmd));
+            
+            if (targetName && actions[targetName]) {
+                const nextAction = actions[targetName];
+                
+                // 모든 동작 중지 후 새 동작 실행
+                mixer.stopAllAction();
                 nextAction.reset().setEffectiveWeight(1).play();
-                activeAction = nextAction;
-                document.getElementById('status').innerText = "동작 실행: " + foundName;
+                currentAction = nextAction;
+                
+                document.getElementById('status').innerText = "강아지가 '" + targetName + "' 합니다!";
             } else {
-                document.getElementById('status').innerText = "'" + command + "' 동작을 못 찾았어요.";
+                document.getElementById('status').innerText = "'" + cmd + "' 동작은 할 줄 모른대요ㅠ";
             }
         }
 
@@ -119,19 +116,19 @@
             recognition.lang = 'en-US';
             document.getElementById('start-btn').onclick = () => {
                 recognition.start();
-                document.getElementById('status').innerText = "듣고 있어요...";
-            }
+                document.getElementById('status').innerText = "듣고 있어요... (Sit, Bark, Walk, Run!)";
+            };
 
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
                 document.getElementById('status').innerText = "인식: " + speech;
 
-                if (speech.includes('sit')) playAction('sit');
-                else if (speech.includes('bark') || speech.includes('speak')) playAction('bark');
-                else if (speech.includes('walk')) playAction('walk');
-                else if (speech.includes('run')) playAction('run');
-                else if (speech.includes('eat')) playAction('eat');
-                else if (speech.includes('idle')) playAction('idle');
+                if (speech.includes('sit')) forceAction('sit');
+                else if (speech.includes('bark') || speech.includes('speak')) forceAction('bark');
+                else if (speech.includes('walk')) forceAction('walk');
+                else if (speech.includes('run')) forceAction('run');
+                else if (speech.includes('eat')) forceAction('eat');
+                else forceAction('idle_a');
             };
         }
     </script>
