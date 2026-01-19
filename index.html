@@ -12,7 +12,7 @@
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지랑 대화하기</button>
+        <button id="start-btn">🎤 강아지야!</button>
         <div id="status">"Sit", "Eat", "Walk", "Run"</div>
     </div>
 
@@ -26,6 +26,7 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         let scene, camera, renderer, mixer, model, animations = {};
+        let activeAction; // 현재 실행 중인 동작
         const clock = new THREE.Clock();
 
         init();
@@ -62,38 +63,52 @@
                 model.position.x += (model.position.x - center.x);
                 model.position.y += (model.position.y - center.y);
                 model.position.z += (model.position.z - center.z);
-
                 const maxDim = Math.max(size.x, size.y, size.z);
                 const fov = camera.fov * (Math.PI / 180);
-                let cameraZ = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.5;
-                camera.position.z = cameraZ;
+                camera.position.z = Math.abs(maxDim / 2 / Math.tan(fov / 2)) * 1.8;
                 camera.updateProjectionMatrix();
                 controls.update();
 
                 // 애니메이션 믹서 설정
                 mixer = new THREE.AnimationMixer(model);
                 
-                // 파일 내의 모든 애니메이션을 찾아 저장 (대소문자 무시하도록)
                 gltf.animations.forEach((clip) => {
                     const action = mixer.clipAction(clip);
+                    action.setLoop(THREE.LoopRepeat); // 무한 반복 설정!
+                    action.clampWhenFinished = false; // 끝나도 멈추지 않게!
                     animations[clip.name.toLowerCase()] = action;
-                    console.log("로드된 동작:", clip.name); 
+                    console.log("동작 등록됨:", clip.name); 
                 });
 
-                // 기본 동작 실행
-                if (animations['idle']) animations['idle'].play();
-                else if (gltf.animations.length > 0) mixer.clipAction(gltf.animations[0]).play();
+                // 처음에는 무조건 Idle 재생
+                if (animations['idle']) {
+                    activeAction = animations['idle'];
+                    activeAction.play();
+                } else if (gltf.animations.length > 0) {
+                    activeAction = mixer.clipAction(gltf.animations[0]);
+                    activeAction.play();
+                }
 
                 animate();
             });
         }
 
-        // 애니메이션 업데이트 루프 (여기가 중요!)
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta(); // 매 프레임의 시간 간격을 계산
-            if (mixer) mixer.update(delta); // 강아지 움직임을 시간에 맞춰 업데이트
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
             renderer.render(scene, camera);
+        }
+
+        // 동작 변경 함수 (부드럽게 전환)
+        function fadeToAction(name) {
+            const previousAction = activeAction;
+            activeAction = animations[name];
+
+            if (previousAction !== activeAction && activeAction) {
+                previousAction.fadeOut(0.3);
+                activeAction.reset().setEffectiveTimeScale(1).setEffectiveWeight(1).fadeIn(0.3).play();
+            }
         }
 
         // --- 음성 인식 부분 ---
@@ -104,7 +119,7 @@
 
             document.getElementById('start-btn').onclick = () => {
                 recognition.start();
-                document.getElementById('status').innerText = "듣고 있어요... (말해보세요!)";
+                document.getElementById('status').innerText = "듣고 있어요...";
             };
 
             recognition.onresult = (event) => {
@@ -112,20 +127,11 @@
                 document.getElementById('status').innerText = "인식: " + speech;
 
                 if (mixer) {
-                    // 1. 모든 애니메이션을 부드럽게 멈춤
-                    Object.values(animations).forEach(a => a.fadeOut(0.5));
-                    
-                    // 2. 해당 애니메이션 실행
-                    let target = 'idle';
-                    if (speech.includes('sit')) target = 'sit';
-                    else if (speech.includes('eat')) target = 'eat';
-                    else if (speech.includes('walk')) target = 'walk';
-                    else if (speech.includes('run')) target = 'run';
-
-                    if (animations[target]) {
-                        animations[target].reset().fadeIn(0.5).play();
-                        document.getElementById('status').innerText = "동작: " + target;
-                    }
+                    if (speech.includes('sit')) fadeToAction('sit');
+                    else if (speech.includes('eat')) fadeToAction('eat');
+                    else if (speech.includes('walk')) fadeToAction('walk');
+                    else if (speech.includes('run')) fadeToAction('run');
+                    else fadeToAction('idle');
                 }
             };
         }
