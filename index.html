@@ -2,21 +2,19 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>아이패드에서도 잘 노는 시바견</title>
+    <title>움직여라 시바견!</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; touch-action: none; }
         #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: sans-serif; }
-        button { padding: 20px 40px; font-size: 18px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); -webkit-appearance: none; }
-        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 18px; padding: 0 20px; word-break: keep-all; }
-        .hint { color: #f0f0f0; font-size: 13px; margin-top: 10px; opacity: 0.8; }
+        button { padding: 20px 40px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 18px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지 부르기 (터치하세요!)</button>
-        <div id="status">시바견을 데려오는 중...</div>
-        <div class="hint">명령어: Attack, Bounce, Click, Eat, Fear</div>
+        <button id="start-btn">🐶 강아지 깨우기 & 명령하기</button>
+        <div id="status">시바견을 불러오는 중...</div>
     </div>
 
     <script type="importmap">
@@ -29,8 +27,8 @@
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
         let scene, camera, renderer, mixer, actions = {}, currentAction;
-        let isLoaded = false;
         const clock = new THREE.Clock();
+        let animationStarted = false;
 
         init();
 
@@ -38,9 +36,9 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2)); // 아이패드 최적화
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
@@ -48,11 +46,10 @@
 
             const controls = new OrbitControls(camera, renderer.domElement);
             controls.target.set(0, 30, 0);
-            controls.enableDamping = true;
             controls.update();
 
-            scene.add(new THREE.AmbientLight(0xffffff, 2.5));
-            const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            scene.add(new THREE.AmbientLight(0xffffff, 3));
+            const sunLight = new THREE.DirectionalLight(0xffffff, 2);
             sunLight.position.set(5, 10, 5);
             scene.add(sunLight);
 
@@ -61,18 +58,16 @@
                 const model = gltf.scene;
                 scene.add(model);
                 
-                isLoaded = true;
-                document.getElementById('status').innerText = "시바견 도착! 노란 버튼을 누르고 말씀하세요.";
+                document.getElementById('status').innerText = "강아지가 왔어요! 버튼을 눌러주세요.";
 
                 mixer = new THREE.AnimationMixer(model);
                 gltf.animations.forEach((clip) => {
                     actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
                 });
 
-                // 처음에는 멈춰있지 않게 Bounce 실행
+                // 처음엔 Bounce를 준비만 해둠
                 if (actions['bounce']) {
                     currentAction = actions['bounce'];
-                    currentAction.play();
                 }
 
                 animate();
@@ -92,52 +87,41 @@
                 currentAction.fadeOut(0.3);
                 nextAction.reset().fadeIn(0.3).play();
                 currentAction = nextAction;
+            } else if (nextAction) {
+                nextAction.play();
             }
         }
 
-        // 아이패드 음성 인식 대응
-        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (SpeechRecognition) {
+        // 아이패드 핵심: 버튼을 누르는 순간 모든 애니메이션 엔진을 가동시킴!
+        const startBtn = document.getElementById('start-btn');
+        startBtn.addEventListener('click', () => {
+            if (currentAction) {
+                currentAction.play(); // 애니메이션 강제 시작
+                animationStarted = true;
+                document.getElementById('status').innerText = "강아지가 깨어났어요! 명령해보세요.";
+            }
+            startSpeechRecognition();
+        });
+
+        function startSpeechRecognition() {
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) return;
+
             const recognition = new SpeechRecognition();
             recognition.lang = 'en-US';
-            recognition.interimResults = false;
-            recognition.continuous = false;
-
-            document.getElementById('start-btn').addEventListener('click', () => {
-                if(!isLoaded) return;
-                try {
-                    recognition.start();
-                    document.getElementById('status').innerText = "듣고 있어요... (Attack, Eat 등)";
-                } catch (e) {
-                    console.log("이미 실행 중");
-                }
-            });
+            recognition.start();
 
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
-                document.getElementById('status').innerText = "인식됨: " + speech;
+                document.getElementById('status').innerText = "명령 확인: " + speech;
 
                 if (speech.includes('attack')) playCommand('attack');
-                else if (speech.includes('bounce') || speech.includes('jump')) playCommand('bounce');
+                else if (speech.includes('bounce')) playCommand('bounce');
                 else if (speech.includes('click')) playCommand('clicked');
                 else if (speech.includes('eat')) playCommand('eat');
                 else if (speech.includes('fear') || speech.includes('sit')) playCommand('fear');
             };
-
-            recognition.onerror = (e) => {
-                document.getElementById('status').innerText = "다시 한번 말씀해주세요!";
-                console.log(e.error);
-            };
-        } else {
-            document.getElementById('status').innerText = "아이패드 설정에서 마이크를 확인해주세요!";
         }
-
-        // 화면 크기 조절 대응
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
