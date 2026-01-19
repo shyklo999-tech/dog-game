@@ -2,19 +2,19 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>움직여라 시바견!</title>
+    <title>시바견아 움직여!</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; touch-action: none; }
         #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: sans-serif; }
-        button { padding: 20px 40px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
+        button { padding: 18px 35px; font-size: 18px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); outline: none; -webkit-tap-highlight-color: transparent; }
         #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 18px; font-weight: bold; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🐶 강아지 깨우기 & 명령하기</button>
-        <div id="status">시바견을 불러오는 중...</div>
+        <button id="start-btn">🎤 클릭하고 명령하기</button>
+        <div id="status">강아지 불러오는 중...</div>
     </div>
 
     <script type="importmap">
@@ -28,7 +28,6 @@
 
         let scene, camera, renderer, mixer, actions = {}, currentAction;
         const clock = new THREE.Clock();
-        let animationStarted = false;
 
         init();
 
@@ -36,7 +35,7 @@
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB);
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+            renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
@@ -58,16 +57,19 @@
                 const model = gltf.scene;
                 scene.add(model);
                 
-                document.getElementById('status').innerText = "강아지가 왔어요! 버튼을 눌러주세요.";
+                document.getElementById('status').innerText = "시바견 도착! 이제 명령해봐.";
 
                 mixer = new THREE.AnimationMixer(model);
+                
                 gltf.animations.forEach((clip) => {
-                    actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
+                    const action = mixer.clipAction(clip);
+                    actions[clip.name.toLowerCase()] = action;
                 });
 
-                // 처음엔 Bounce를 준비만 해둠
+                // [중요] 로딩되자마자 바로 Bounce 실행! (멈춰있지 않게)
                 if (actions['bounce']) {
                     currentAction = actions['bounce'];
+                    currentAction.play();
                 }
 
                 animate();
@@ -84,44 +86,36 @@
         function playCommand(name) {
             const nextAction = actions[name.toLowerCase()];
             if (nextAction && currentAction !== nextAction) {
-                currentAction.fadeOut(0.3);
-                nextAction.reset().fadeIn(0.3).play();
+                currentAction.fadeOut(0.5);
+                nextAction.reset().fadeIn(0.5).play();
                 currentAction = nextAction;
-            } else if (nextAction) {
-                nextAction.play();
             }
         }
 
-        // 아이패드 핵심: 버튼을 누르는 순간 모든 애니메이션 엔진을 가동시킴!
-        const startBtn = document.getElementById('start-btn');
-        startBtn.addEventListener('click', () => {
-            if (currentAction) {
-                currentAction.play(); // 애니메이션 강제 시작
-                animationStarted = true;
-                document.getElementById('status').innerText = "강아지가 깨어났어요! 명령해보세요.";
-            }
-            startSpeechRecognition();
-        });
-
-        function startSpeechRecognition() {
+        // 음성 인식 및 아이패드 깨우기 통합
+        document.getElementById('start-btn').onclick = () => {
+            // 버튼 누를 때 다시 한번 현재 애니메이션 재생 확인 (아이패드용)
+            if (currentAction) currentAction.play();
+            
             const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-            if (!SpeechRecognition) return;
+            if (SpeechRecognition) {
+                const recognition = new SpeechRecognition();
+                recognition.lang = 'en-US';
+                recognition.start();
+                document.getElementById('status').innerText = "듣고 있어요... (Attack, Eat 등)";
 
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            recognition.start();
-
-            recognition.onresult = (event) => {
-                const speech = event.results[0][0].transcript.toLowerCase();
-                document.getElementById('status').innerText = "명령 확인: " + speech;
-
-                if (speech.includes('attack')) playCommand('attack');
-                else if (speech.includes('bounce')) playCommand('bounce');
-                else if (speech.includes('click')) playCommand('clicked');
-                else if (speech.includes('eat')) playCommand('eat');
-                else if (speech.includes('fear') || speech.includes('sit')) playCommand('fear');
-            };
-        }
+                recognition.onresult = (event) => {
+                    const speech = event.results[0][0].transcript.toLowerCase();
+                    document.getElementById('status').innerText = "명령: " + speech;
+                    
+                    if (speech.includes('attack')) playCommand('attack');
+                    else if (speech.includes('bounce')) playCommand('bounce');
+                    else if (speech.includes('click')) playCommand('clicked');
+                    else if (speech.includes('eat')) playCommand('eat');
+                    else if (speech.includes('fear') || speech.includes('sit')) playCommand('fear');
+                };
+            }
+        };
     </script>
 </body>
 </html>
