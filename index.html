@@ -2,21 +2,20 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>나의 시바견 게임</title>
+    <title>말 잘 듣는 시바견</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; }
         #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: sans-serif; }
         button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
-        button:active { transform: scale(0.95); }
-        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 22px; font-weight: bold; }
-        .hint { color: #f0f0f0; font-size: 14px; margin-top: 5px; }
+        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 20px; }
+        .hint { color: #f0f0f0; font-size: 14px; margin-top: 10px; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지에게 명령하기</button>
-        <div id="status">강아지를 부르는 중...</div>
-        <div class="hint">(명령어: Attack, Bounce, Clicked, Eat, Fear)</div>
+        <button id="start-btn">🎤 강아지에게 명령하기 (클릭!)</button>
+        <div id="status">시바견을 불러오는 중...</div>
+        <div class="hint">명령어: Attack, Bounce, Click, Eat, Fear</div>
     </div>
 
     <script type="importmap">
@@ -39,98 +38,82 @@
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            camera.position.set(100, 100, 200);
+            // 카메라 위치를 시바견 크기에 맞게 조정했어!
+            camera.position.set(0, 50, 150);
 
             const controls = new OrbitControls(camera, renderer.domElement);
-            controls.enableDamping = true;
+            controls.target.set(0, 30, 0);
+            controls.update();
 
-            scene.add(new THREE.AmbientLight(0xffffff, 3));
+            scene.add(new THREE.AmbientLight(0xffffff, 2));
             const sunLight = new THREE.DirectionalLight(0xffffff, 2);
             sunLight.position.set(5, 10, 5);
             scene.add(sunLight);
 
             const loader = new GLTFLoader();
-            // 파일 이름이 'shiba.glb'인지 꼭 확인해줘!
             loader.load('shiba.glb', (gltf) => {
                 const model = gltf.scene;
                 scene.add(model);
                 
-                document.getElementById('status').innerText = "시바견 도착! 영어로 명령해봐.";
+                document.getElementById('status').innerText = "시바견 준비 완료! 명령해보세요.";
 
-                // 애니메이션 믹서 설정
                 mixer = new THREE.AnimationMixer(model);
                 
-                // 파일 안의 실제 애니메이션들을 연결
+                // 실제 애니메이션 이름들을 매핑
                 gltf.animations.forEach((clip) => {
                     actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
                 });
 
-                // 처음에는 기본 동작(Bounce) 실행
+                // 처음에는 'bounce' 동작을 실행해서 살아있음을 보여주자!
                 if (actions['bounce']) {
                     currentAction = actions['bounce'];
                     currentAction.play();
                 }
 
                 animate();
-            }, undefined, (e) => console.error(e));
+            });
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            if (mixer) mixer.update(delta);
+            if (mixer) mixer.update(clock.getDelta());
             renderer.render(scene, camera);
         }
 
-        // 동작 변경 함수
         function playCommand(name) {
             const nextAction = actions[name.toLowerCase()];
             if (nextAction && currentAction !== nextAction) {
-                currentAction.fadeOut(0.5);
-                nextAction.reset().fadeIn(0.5).play();
+                currentAction.fadeOut(0.3);
+                nextAction.reset().fadeIn(0.3).play();
                 currentAction = nextAction;
             }
         }
 
-        // 음성 인식 설정
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US'; // 영어 발음 인식
+            recognition.lang = 'en-US';
             
             document.getElementById('start-btn').onclick = () => {
                 recognition.start();
-                document.getElementById('status').innerText = "듣고 있어요... (영어로 말해줘!)";
+                document.getElementById('status').innerText = "듣고 있어요... (영어 단어를 말해주세요!)";
             };
 
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
                 document.getElementById('status').innerText = "인식된 말: " + speech;
 
-                // 시바견이 알아듣는 진짜 이름들로 매칭!
+                // 시바견이 알아듣는 진짜 이름들과 매칭
                 if (speech.includes('attack')) playCommand('attack');
-                else if (speech.includes('bounce')) playCommand('bounce');
+                else if (speech.includes('bounce') || speech.includes('jump')) playCommand('bounce');
                 else if (speech.includes('click')) playCommand('clicked');
-                else if (speech.includes('eat')) playCommand('eat');
-                else if (speech.includes('fear') || speech.includes('scared')) playCommand('fear');
+                else if (speech.includes('eat') || speech.includes('food')) playCommand('eat');
+                else if (speech.includes('fear') || speech.includes('scared') || speech.includes('sit')) playCommand('fear');
             };
-
-            recognition.onerror = () => {
-                document.getElementById('status').innerText = "잘 안 들려요. 다시 시도해봐!";
-            };
-        } else {
-            document.getElementById('status').innerText = "이 브라우저는 음성 인식을 지원하지 않아 ㅠㅠ";
         }
-
-        window.addEventListener('resize', () => {
-            camera.aspect = window.innerWidth / window.innerHeight;
-            camera.updateProjectionMatrix();
-            renderer.setSize(window.innerWidth, window.innerHeight);
-        });
     </script>
 </body>
 </html>
