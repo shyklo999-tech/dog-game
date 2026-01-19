@@ -12,8 +12,8 @@
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지야 (Sit/Bark/Walk/Run)</button>
-        <div id="status">명령을 기다리고 있어요!</div>
+        <button id="start-btn">🎤 강아지야 (Sit / Bark / Walk)</button>
+        <div id="status">준비 완료! 버튼을 눌러보세요.</div>
     </div>
 
     <script type="importmap">
@@ -25,8 +25,7 @@
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-        let scene, camera, renderer, mixer, model, clips, actions = {};
-        let currentAction;
+        let scene, camera, renderer, mixer, model, allActions = [];
         const clock = new THREE.Clock();
 
         init();
@@ -52,7 +51,6 @@
             loader.load('dog_puppy.glb', (gltf) => {
                 model = gltf.scene;
                 scene.add(model);
-                clips = gltf.animations; // 애니메이션 클립들 저장
 
                 const box = new THREE.Box3().setFromObject(model);
                 const center = box.getCenter(new THREE.Vector3());
@@ -60,25 +58,23 @@
                 model.position.sub(center); 
                 
                 const maxDim = Math.max(size.x, size.y, size.z);
-                camera.position.set(0, maxDim * 1, maxDim * 2.5); 
+                camera.position.set(0, maxDim * 0.8, maxDim * 2.5); 
                 camera.lookAt(0, 0, 0);
                 controls.update();
 
                 mixer = new THREE.AnimationMixer(model);
                 
-                // 애니메이션 클립들을 액션으로 변환하여 저장
-                clips.forEach((clip) => {
+                // [수정] 이름 대신 "순서"로 저장합니다.
+                gltf.animations.forEach((clip, index) => {
                     const action = mixer.clipAction(clip);
-                    actions[clip.name.toLowerCase()] = action;
+                    allActions.push(action); // 리스트에 순서대로 담기
+                    console.log(index + "번 동작 로드됨");
                 });
 
-                // 기본 동작 실행
-                if (actions['idle_a']) {
-                    currentAction = actions['idle_a'];
-                } else {
-                    currentAction = mixer.clipAction(clips[0]);
+                // 처음에는 0번 동작(보통 Idle) 실행
+                if (allActions.length > 0) {
+                    allActions[0].play();
                 }
-                currentAction.play();
 
                 animate();
             });
@@ -86,27 +82,16 @@
 
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            if (mixer) mixer.update(delta);
+            if (mixer) mixer.update(clock.getDelta());
             renderer.render(scene, camera);
         }
 
-        // 동작을 완전히 새로 고침하며 바꾸는 함수
-        function forceAction(cmd) {
-            // 입력된 명령어(cmd)가 포함된 애니메이션 이름 찾기
-            const targetName = Object.keys(actions).find(name => name.includes(cmd));
-            
-            if (targetName && actions[targetName]) {
-                const nextAction = actions[targetName];
-                
-                // 모든 동작 중지 후 새 동작 실행
+        // 번호로 동작을 강제 실행하는 함수
+        function playActionByIndex(index) {
+            if (allActions[index]) {
                 mixer.stopAllAction();
-                nextAction.reset().setEffectiveWeight(1).play();
-                currentAction = nextAction;
-                
-                document.getElementById('status').innerText = "강아지가 '" + targetName + "' 합니다!";
-            } else {
-                document.getElementById('status').innerText = "'" + cmd + "' 동작은 할 줄 모른대요ㅠ";
+                allActions[index].reset().setEffectiveWeight(1).play();
+                document.getElementById('status').innerText = index + "번 동작 실행 중!";
             }
         }
 
@@ -114,21 +99,18 @@
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
             recognition.lang = 'en-US';
-            document.getElementById('start-btn').onclick = () => {
-                recognition.start();
-                document.getElementById('status').innerText = "듣고 있어요... (Sit, Bark, Walk, Run!)";
-            };
+            document.getElementById('start-btn').onclick = () => recognition.start();
 
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
                 document.getElementById('status').innerText = "인식: " + speech;
 
-                if (speech.includes('sit')) forceAction('sit');
-                else if (speech.includes('bark') || speech.includes('speak')) forceAction('bark');
-                else if (speech.includes('walk')) forceAction('walk');
-                else if (speech.includes('run')) forceAction('run');
-                else if (speech.includes('eat')) forceAction('eat');
-                else forceAction('idle_a');
+                // 음성에 따라 번호를 매칭 (파일 구조에 따라 번호를 바꿀 수 있어!)
+                if (speech.includes('sit')) playActionByIndex(1);
+                else if (speech.includes('bark') || speech.includes('speak')) playActionByIndex(2);
+                else if (speech.includes('walk')) playActionByIndex(3);
+                else if (speech.includes('run')) playActionByIndex(4);
+                else playActionByIndex(0); // 기본 대기
             };
         }
     </script>
