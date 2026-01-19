@@ -2,18 +2,21 @@
 <html>
 <head>
     <meta charset="UTF-8">
-    <title>My Puppy Game</title>
+    <title>나의 시바견 게임</title>
     <style>
         body { margin: 0; overflow: hidden; background-color: #87CEEB; }
         #ui { position: absolute; top: 20px; width: 100%; text-align: center; z-index: 100; font-family: sans-serif; }
-        button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; }
-        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 20px; }
+        button { padding: 15px 30px; font-size: 20px; cursor: pointer; border-radius: 50px; border: none; background: #FFD700; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.2); }
+        button:active { transform: scale(0.95); }
+        #status { color: white; text-shadow: 2px 2px 4px rgba(0,0,0,0.5); margin-top: 15px; font-size: 22px; font-weight: bold; }
+        .hint { color: #f0f0f0; font-size: 14px; margin-top: 5px; }
     </style>
 </head>
 <body>
     <div id="ui">
-        <button id="start-btn">🎤 강아지야 (Sit / Bark / Walk)</button>
-        <div id="status">강아지를 기다리는 중...</div>
+        <button id="start-btn">🎤 강아지에게 명령하기</button>
+        <div id="status">강아지를 부르는 중...</div>
+        <div class="hint">(명령어: Attack, Bounce, Clicked, Eat, Fear)</div>
     </div>
 
     <script type="importmap">
@@ -33,79 +36,101 @@
         function init() {
             scene = new THREE.Scene();
             scene.background = new THREE.Color(0x87CEEB);
+
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
             document.body.appendChild(renderer.domElement);
 
             camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-            const controls = new OrbitControls(camera, renderer.domElement);
+            camera.position.set(100, 100, 200);
 
-            scene.add(new THREE.AmbientLight(0xffffff, 2.5));
-            const sunLight = new THREE.DirectionalLight(0xffffff, 1.5);
+            const controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+
+            scene.add(new THREE.AmbientLight(0xffffff, 3));
+            const sunLight = new THREE.DirectionalLight(0xffffff, 2);
             sunLight.position.set(5, 10, 5);
             scene.add(sunLight);
 
             const loader = new GLTFLoader();
-            // 파일 이름을 다운로드한 시바견 파일 이름으로 바꿔줘!
+            // 파일 이름이 'shiba.glb'인지 꼭 확인해줘!
             loader.load('shiba.glb', (gltf) => {
                 const model = gltf.scene;
                 scene.add(model);
-                document.getElementById('status').innerText = "시바견 도착! 명령해보세요.";
+                
+                document.getElementById('status').innerText = "시바견 도착! 영어로 명령해봐.";
 
-                // 자동 줌인
-                const box = new THREE.Box3().setFromObject(model);
-                const size = box.getSize(new THREE.Vector3());
-                camera.position.set(0, size.y, size.z * 3);
-                controls.target.set(0, size.y * 0.5, 0);
-                controls.update();
-
+                // 애니메이션 믹서 설정
                 mixer = new THREE.AnimationMixer(model);
+                
+                // 파일 안의 실제 애니메이션들을 연결
                 gltf.animations.forEach((clip) => {
                     actions[clip.name.toLowerCase()] = mixer.clipAction(clip);
                 });
 
-                // 기본 동작 실행
-                const firstAction = Object.values(actions)[0];
-                if (firstAction) { currentAction = firstAction; currentAction.play(); }
+                // 처음에는 기본 동작(Bounce) 실행
+                if (actions['bounce']) {
+                    currentAction = actions['bounce'];
+                    currentAction.play();
+                }
 
                 animate();
-            });
+            }, undefined, (e) => console.error(e));
         }
 
         function animate() {
             requestAnimationFrame(animate);
-            if (mixer) mixer.update(clock.getDelta());
+            const delta = clock.getDelta();
+            if (mixer) mixer.update(delta);
             renderer.render(scene, camera);
         }
 
+        // 동작 변경 함수
         function playCommand(name) {
-            const targetKey = Object.keys(actions).find(k => k.includes(name));
-            if (targetKey && actions[targetKey]) {
-                const nextAction = actions[targetKey];
-                if (currentAction !== nextAction) {
-                    currentAction.fadeOut(0.2);
-                    nextAction.reset().fadeIn(0.2).play();
-                    currentAction = nextAction;
-                }
+            const nextAction = actions[name.toLowerCase()];
+            if (nextAction && currentAction !== nextAction) {
+                currentAction.fadeOut(0.5);
+                nextAction.reset().fadeIn(0.5).play();
+                currentAction = nextAction;
             }
         }
 
+        // 음성 인식 설정
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         if (SpeechRecognition) {
             const recognition = new SpeechRecognition();
-            recognition.lang = 'en-US';
-            document.getElementById('start-btn').onclick = () => recognition.start();
+            recognition.lang = 'en-US'; // 영어 발음 인식
+            
+            document.getElementById('start-btn').onclick = () => {
+                recognition.start();
+                document.getElementById('status').innerText = "듣고 있어요... (영어로 말해줘!)";
+            };
+
             recognition.onresult = (event) => {
                 const speech = event.results[0][0].transcript.toLowerCase();
-                document.getElementById('status').innerText = "명령: " + speech;
+                document.getElementById('status').innerText = "인식된 말: " + speech;
 
-                if (speech.includes('sit')) playCommand('sit');
-                else if (speech.includes('bark') || speech.includes('speak')) playCommand('bark');
-                else if (speech.includes('walk')) playCommand('walk');
-                else if (speech.includes('run')) playCommand('run');
-                else playCommand('idle');
+                // 시바견이 알아듣는 진짜 이름들로 매칭!
+                if (speech.includes('attack')) playCommand('attack');
+                else if (speech.includes('bounce')) playCommand('bounce');
+                else if (speech.includes('click')) playCommand('clicked');
+                else if (speech.includes('eat')) playCommand('eat');
+                else if (speech.includes('fear') || speech.includes('scared')) playCommand('fear');
             };
+
+            recognition.onerror = () => {
+                document.getElementById('status').innerText = "잘 안 들려요. 다시 시도해봐!";
+            };
+        } else {
+            document.getElementById('status').innerText = "이 브라우저는 음성 인식을 지원하지 않아 ㅠㅠ";
         }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
     </script>
 </body>
 </html>
